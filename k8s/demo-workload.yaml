@@ -1,0 +1,29 @@
+# Test pods. The only line that matters is `schedulerName: ml-scheduler`.
+# Without it, the default scheduler places the pod (the baseline).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-ours
+  labels: { app: demo, scheduler: ours }
+spec:
+  schedulerName: ml-scheduler          # goes through OUR scheduler + extender
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["sh", "-c", "echo scheduled on $(hostname); sleep 3600"]
+      resources:
+        requests: { cpu: "100m", memory: "64Mi" }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-default
+  labels: { app: demo, scheduler: default }
+spec:
+  # no schedulerName -> default scheduler (comparison baseline)
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["sh", "-c", "echo scheduled on $(hostname); sleep 3600"]
+      resources:
+        requests: { cpu: "100m", memory: "64Mi" }
