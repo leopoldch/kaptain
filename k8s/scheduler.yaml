@@ -1,0 +1,79 @@
+# A second kube-scheduler named "ml-scheduler" that uses our extender.
+# The default Kubernetes scheduler stays untouched so we can compare both.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: ml-scheduler }
+  template:
+    metadata:
+      labels: { app: ml-scheduler }
+    spec:
+      serviceAccountName: ml-scheduler
+      containers:
+        - name: kube-scheduler
+          image: registry.k8s.io/kube-scheduler:v1.31.0
+          command:
+            - kube-scheduler
+            - --config=/etc/kubernetes/config.yaml
+            - --v=3
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: ml-scheduler-config
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+---
+# The scheduler needs rights to read nodes/pods and create bindings.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-scheduler-as-kube-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: ml-scheduler
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-scheduler-as-volume-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:volume-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: ml-scheduler
+    namespace: kube-system
+---
+# Read the auth configmap (silences startup warnings).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-scheduler-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: ml-scheduler
+    namespace: kube-system

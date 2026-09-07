@@ -1,0 +1,17 @@
+# Local multi-node cluster. Labels simulate hardware heterogeneity
+# (useful for the "heterogeneous workloads" scenarios / placement features).
+# Kubernetes version pinned to match the scheduler image (v1.31.0).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.31.0
+  - role: worker
+    image: kindest/node:v1.31.0
+    labels: { hw-class: "fast", cpu-gen: "new" }
+  - role: worker
+    image: kindest/node:v1.31.0
+    labels: { hw-class: "slow", cpu-gen: "old" }
+  - role: worker
+    image: kindest/node:v1.31.0
+    labels: { hw-class: "slow", cpu-gen: "old" }

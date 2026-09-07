@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    # Disabled: otherwise this scheduler waits on the "kube-scheduler" lock
+    # already held by the cluster's built-in scheduler and stays idle.
+    leaderElection:
+      leaderElect: false
+    profiles:
+      - schedulerName: ml-scheduler
+        plugins:
+          score:
+            disabled:
+              - name: "*"
+    extenders:
+      - urlPrefix: "http://scheduler-extender.kube-system.svc.cluster.local:8888"
+        filterVerb: "filter"
+        prioritizeVerb: "prioritize"
+        weight: 5
+        enableHTTPS: false
+        nodeCacheCapable: false
+        ignorable: false
