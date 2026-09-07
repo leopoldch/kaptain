@@ -15,14 +15,14 @@ def healthz():
 
 
 @app.post("/filter")
-async def filter_nodes(args: dict):
+def filter_nodes(args: dict):
     nodes = args.get("Nodes", {}) or {}
     names = args.get("NodeNames") or [n["metadata"]["name"] for n in nodes.get("items", [])]
     return JSONResponse({"Nodes": nodes, "NodeNames": names, "FailedNodes": {}, "Error": ""})
 
 
 @app.post("/prioritize")
-async def prioritize(args: dict):
+def prioritize(args: dict):
     pod = args.get("Pod", {})
     nodes = (args.get("Nodes") or {}).get("items", [])
     if not nodes:
