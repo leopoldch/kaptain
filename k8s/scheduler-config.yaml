@@ -13,6 +13,10 @@ data:
       leaderElect: false
     profiles:
       - schedulerName: ml-scheduler
+        plugins:
+          score:
+            disabled:
+              - name: "*"
     extenders:
       - urlPrefix: "http://scheduler-extender.kube-system.svc.cluster.local:8888"
         filterVerb: "filter"
