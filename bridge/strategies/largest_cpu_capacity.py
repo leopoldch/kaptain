@@ -11,8 +11,8 @@ def _allocatable_cpu(node: dict) -> int:
     return _millicores(node.get("status", {}).get("allocatable", {}).get("cpu", "0"))
 
 
-class SpreadCPU(SchedulingStrategy):
-    name = "spread-cpu"
+class LargestCPUCapacity(SchedulingStrategy):
+    name = "largest-cpu-capacity"
 
     def select(self, pod: dict, nodes: list[dict]) -> str:
         best = max(nodes, key=_allocatable_cpu)
