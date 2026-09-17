@@ -201,7 +201,63 @@ Indicative numbers from those two runs, **not a result** — one run per arm, no
 (plugin). Note that every plugin observation fell in the first 1 ms bucket, so its quantiles
 print as `<1.0ms` and only the mean is usable, exactly as anticipated.
 
-**The ten pairs have not been run.**
+## Result, scenario A (light pods, no background load), 17 September 2026
+
+Ten paired runs, 60 pods per run, `dummy-random` on both arms, kind with 3 workers,
+Kubernetes v1.31.0. **20 runs, 0 aborted, 10 usable pairs.**
+
+| | extender | plugin |
+|---|---|---|
+| `scheduling_algorithm_duration_seconds`, mean | **5.60 ms** | **0.44 ms** |
+| `scheduling_attempt_duration_seconds` (+ binding), mean | 8.83 ms | 3.75 ms |
+| `pod_scheduling_sli_duration_seconds`, mean | 8.9 ms | 3.8 ms |
+| Our own decision time (excludes transport) | 0.225 ms | 0.093 ms |
+| Decisions per run | 60 | 60 |
+| Fallbacks, invalid decisions | 0 | 0 |
+| Share of observations in the first 1 ms bucket | 0 % | 97 % |
+
+**Paired difference on the primary metric: 5.16 ms [4.84, 5.48] at 95 %**, over ten pairs.
+Individual differences ranged from 4.09 ms to 5.80 ms; every pair went the same way.
+
+Two checks that make the number mean what it says:
+
+- **600 of 600 tasks were placed on the same node by both arms.** The policy really was held
+  equal, on real pods, across the whole pilot — not only in the fixtures.
+- **600 of 600 plugin bindings matched the intended node**, with no score ties, so no
+  placement was settled by the scheduler's random tie-break.
+
+### Reading it
+
+The gap is transport, not policy. Our own timers say the decision itself costs 0.23 ms in the
+extender and 0.09 ms in the plugin — a 0.13 ms difference — while the scheduler sees 5.16 ms.
+The remaining ~5 ms is the HTTP round trip, the JSON serialisation of the node list, and the
+scheduler-side handling of the extender call. That is exactly the quantity the plugin exists
+to remove, and it is about **12× the cost of the policy itself** at this cluster size.
+
+The plugin's quantiles are not reported: 97 % of its observations fall in the first 1 ms
+bucket of the native histogram, so P50/P95/P99 print as `<1.0ms` and nothing finer can be
+claimed. The mean, being Δsum/Δcount, is unaffected.
+
+### What this does not establish
+
+- **This testbed only.** kind runs the three workers as containers on one machine, so the
+  transport crosses a loopback interface, not a network. On separate VMs the absolute gap
+  would change — plausibly upward — and the same protocol has to be re-run there before any
+  number reaches the paper.
+- **Three candidate nodes.** The node list serialised on every extender call is tiny here.
+  The cost of that serialisation grows with the cluster, so this gap is a lower bound on what
+  a larger cluster would show.
+- **A trivial policy.** `dummy-random` costs almost nothing, which is what isolates the
+  integration. It says nothing about what an ML or LLM policy would cost, and nothing about
+  placement quality — the two arms placed identically by construction.
+- **Submission lag.** The worst per-pod lag was 0.87 s against a 1 s steady interval, so the
+  arrival pattern was respected but not by a wide margin. The bursts in particular were
+  submitted one `kubectl` at a time and are therefore softer than the plan describes.
+
+### Next
+
+Scenario B — the same plan under a fixed `stress-ng` background load — has not been run. It
+is the one that says whether the gap holds when the machine is busy.
 
 ```bash
 make up build load deploy build-plugin load-plugin deploy-plugin
