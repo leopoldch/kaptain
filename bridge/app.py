@@ -1,21 +1,118 @@
+import logging
 import os
+import time
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
-from strategies import get_strategy
+from decision import Decider, counters, normalize
+import metrics as extender_metrics
+from snapshot import (FEATURE_ALLOCATABLE, FEATURE_REQUESTED, FEATURE_TELEMETRY, INTEGRATION,
+                      MAX_EXTENDER_PRIORITY, best, names)
+from strategies import PROTOCOL_FEATURES, get_strategy, missing_requirements
+
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 strategy = get_strategy(os.getenv("STRATEGY", "dummy-random"))
+
+# The extender protocol carries no per-node requested resources. With
+# KAPTAIN_REQUESTS_SOURCE=api a background refresh reads them from the Kubernetes API, which
+# is what makes a resource-aware comparison with the plugin fair.
+requests_source = None
+telemetry_source = None
+available = PROTOCOL_FEATURES
+if os.getenv("KAPTAIN_REQUESTS_SOURCE", "none") == "api":
+    from cluster import ApiRequestsSource
+
+    requests_source = ApiRequestsSource(
+        refresh_seconds=float(os.getenv("KAPTAIN_REQUESTS_REFRESH", "2")),
+        max_age_seconds=float(os.getenv("KAPTAIN_REQUESTS_MAX_AGE", "30")),
+    )
+    requests_source.start()
+    available = available | {FEATURE_REQUESTED}
+
+# Measured usage, the feature both paths were missing. Needed by least-used (the BT arm).
+if os.getenv("KAPTAIN_TELEMETRY", "off") == "metrics-api":
+    from telemetry import MetricsApiTelemetry
+
+    telemetry_source = MetricsApiTelemetry(
+        refresh_seconds=float(os.getenv("KAPTAIN_TELEMETRY_REFRESH", "2")),
+        max_age_seconds=float(os.getenv("KAPTAIN_TELEMETRY_MAX_AGE", "30")),
+    )
+    telemetry_source.start()
+    available = available | {FEATURE_TELEMETRY}
+
+# Fail fast rather than produce a run made only of fallbacks.
+# KAPTAIN_ALLOW_DEGRADED=1 runs it anyway, for debugging only.
+_missing = missing_requirements(strategy, available)
+if _missing and os.getenv("KAPTAIN_ALLOW_DEGRADED") != "1":
+    raise RuntimeError(
+        f"strategy {strategy.name!r} needs {sorted(_missing)}; set "
+        "KAPTAIN_REQUESTS_SOURCE=api and/or KAPTAIN_TELEMETRY=metrics-api to provide them, "
+        "or KAPTAIN_ALLOW_DEGRADED=1 to force a degraded run"
+    )
+
+decider = Decider(strategy, requests=requests_source, telemetry=telemetry_source)
 app = FastAPI()
 
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "strategy": strategy.name}
+    return {
+        "status": "ok",
+        "strategy": strategy.name,
+        "integration": INTEGRATION,
+        "features": sorted(available),
+    }
+
+
+@app.get("/stats")
+def stats():
+    return {
+        "strategy": strategy.name,
+        "integration": INTEGRATION,
+        "run_id": decider.run_id,
+        "policy_version": decider.policy_version,
+        "counters": counters,
+    }
+
+
+@app.get("/metrics")
+def prometheus_metrics():
+    """The plugin exposes the same series on the scheduler's /metrics."""
+    return Response(extender_metrics.render(), media_type="text/plain; version=0.0.4")
+
+
+@app.post("/replay")
+def replay(snapshot: dict):
+    """Score a recorded snapshot, without touching the cluster.
+
+    Comparing the two integrations on a live cluster also compares two views of the cluster:
+    the plugin sees its own reservations in the scheduler cache, while this service refreshes
+    bound pods periodically. Replaying the same snapshot through both paths removes that
+    difference and leaves the decision cost. The plugin's equivalent is `kaptain-replay`.
+    """
+    started = time.perf_counter()
+    scores = strategy.scores(snapshot)
+    elapsed = (time.perf_counter() - started) * 1000
+    return {
+        "integration": INTEGRATION,
+        "mode": "replay",
+        "strategy": strategy.name,
+        "run_id": snapshot.get("run_id", "unset"),
+        "policy_version": snapshot.get("policy_version", "unset"),
+        "pod_task_id": snapshot.get("pod", {}).get("task_id", ""),
+        "intended_node": best(names(snapshot), scores),
+        "scores": scores,
+        "normalized": normalize(scores),
+        "scale": MAX_EXTENDER_PRIORITY,
+        "duration_ms": round(elapsed, 3),
+    }
 
 
 @app.post("/filter")
 def filter_nodes(args: dict):
+    """Pass-through: admissibility stays Kubernetes' job, in both integrations."""
     nodes = args.get("Nodes", {}) or {}
     names = args.get("NodeNames") or [n["metadata"]["name"] for n in nodes.get("items", [])]
     return JSONResponse({"Nodes": nodes, "NodeNames": names, "FailedNodes": {}, "Error": ""})
@@ -27,11 +124,7 @@ def prioritize(args: dict):
     nodes = (args.get("Nodes") or {}).get("items", [])
     if not nodes:
         return JSONResponse([])
-    try:
-        chosen = strategy.select(pod, nodes)
-    except Exception:
-        chosen = None
-    return JSONResponse(
-        [{"Host": n["metadata"]["name"], "Score": 10 if n["metadata"]["name"] == chosen else 0}
-         for n in nodes]
-    )
+    decision = decider.decide(pod, nodes)
+    return JSONResponse([
+        {"Host": name, "Score": score} for name, score in decision.normalized.items()
+    ])

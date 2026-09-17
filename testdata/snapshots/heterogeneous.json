@@ -1,0 +1,67 @@
+{
+  "comment": "The biggest node is also the busiest: capacity and least-allocated disagree.",
+  "snapshot": {
+    "run_id": "fixture",
+    "policy_version": "fixture",
+    "seed": 7,
+    "pod": {
+      "uid": "pod-bbb",
+      "namespace": "default",
+      "name": "demo",
+      "requested_millicpu": 1000,
+      "requested_memory_bytes": 1073741824,
+      "task_id": "default/demo-heterogeneous"
+    },
+    "nodes": [
+      {
+        "name": "big",
+        "allocatable_millicpu": 16000,
+        "allocatable_memory_bytes": 34359738368,
+        "requested_millicpu": 15000,
+        "requested_memory_bytes": 32212254720,
+        "pods": 40,
+        "ready": true
+      },
+      {
+        "name": "medium",
+        "allocatable_millicpu": 8000,
+        "allocatable_memory_bytes": 17179869184,
+        "requested_millicpu": 1000,
+        "requested_memory_bytes": 2147483648,
+        "pods": 4,
+        "ready": true
+      },
+      {
+        "name": "small",
+        "allocatable_millicpu": 2000,
+        "allocatable_memory_bytes": 4294967296,
+        "requested_millicpu": 0,
+        "requested_memory_bytes": 0,
+        "pods": 0,
+        "ready": true
+      }
+    ]
+  },
+  "expected": {
+    "dummy-random": "small",
+    "largest-cpu-capacity": "big",
+    "least-allocated": "medium"
+  },
+  "expected_normalized": {
+    "dummy-random": {
+      "big": 0,
+      "medium": 0,
+      "small": 10
+    },
+    "largest-cpu-capacity": {
+      "big": 10,
+      "medium": 4,
+      "small": 0
+    },
+    "least-allocated": {
+      "big": 0,
+      "medium": 10,
+      "small": 7
+    }
+  }
+}

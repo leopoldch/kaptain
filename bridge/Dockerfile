@@ -7,7 +7,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY app.py ./
+COPY app.py cluster.py decision.py fallback.py snapshot.py ./
 COPY strategies ./strategies
 
 EXPOSE 8888
