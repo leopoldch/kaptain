@@ -65,6 +65,10 @@ func (p *Plugin) nodeSnapshot(node *framework.NodeInfo, pending map[string]reser
 		missingFeaturesTotal.WithLabelValues(snapshot.FeatureRequested).Inc()
 	}
 
+	// Requested resources come from the scheduler cache, which is current by construction.
+	// The extender reads them from a periodic API refresh and reports a real age there.
+	entry.RequestsAgeSeconds = 0
+
 	for _, held := range pending {
 		if held.node == entry.Name {
 			entry.RequestedMilliCPU += held.requestedMilliCPU
@@ -77,7 +81,7 @@ func (p *Plugin) nodeSnapshot(node *framework.NodeInfo, pending map[string]reser
 		if usage, ok := p.telemetry.Get(entry.Name); ok {
 			entry.UsedMilliCPU = usage.MilliCPU
 			entry.UsedMemoryBytes = usage.MemoryBytes
-			entry.MetricsAgeSeconds = usage.AgeSeconds
+			entry.TelemetryAgeSeconds = usage.AgeSeconds
 		} else {
 			entry.Missing = append(entry.Missing, snapshot.FeatureTelemetry)
 			missingFeaturesTotal.WithLabelValues(snapshot.FeatureTelemetry).Inc()

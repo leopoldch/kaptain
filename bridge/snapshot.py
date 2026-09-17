@@ -245,9 +245,12 @@ def _node(node: dict, requests: "RequestsSource | None", telemetry: object | Non
         "ready": _ready(node),
         "missing": missing,
     }
-    age = max(reserved["age_seconds"], measured["age_seconds"])
-    if age:
-        entry["metrics_age_seconds"] = round(age, 3)
+    # Two ages, never one: requested resources and measured usage come from different
+    # sources at different rates, and a single mixed age cannot say which one is stale.
+    if reserved["age_seconds"]:
+        entry["requests_age_seconds"] = round(reserved["age_seconds"], 3)
+    if measured["age_seconds"]:
+        entry["telemetry_age_seconds"] = round(measured["age_seconds"], 3)
     return entry
 
 

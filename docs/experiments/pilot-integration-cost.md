@@ -16,7 +16,7 @@ identical snapshots (`testdata/`), so any difference left is the integration.
 
 | Element | Choice | Why |
 |---|---|---|
-| Strategy | `dummy-random` on both paths | Identical decisions, near-zero policy cost: what is measured is the path, not the thinking. |
+| Strategy | `dummy-random` on both paths | Identical decisions, near-zero policy cost: what is measured is the path, not the thinking. Both manifests default to it, and the run record must show the same value on both arms. |
 | Reproducibility | Same `KAPTAIN_SEED`, same `kaptain.io/task-id` per pod | The seeded draw keys on the task id, so both arms place the same workload on the same nodes. |
 | Submission plan | Generated once, saved, replayed for every run | The "dataset" of this pilot is the submission plan: id, arrival offset, image, requests, limits. No industrial trace is needed for this question. |
 | Scenario A | Light pods, no background load | The integration cost with little contention. |
@@ -73,8 +73,11 @@ with a confidence interval **at the level of runs, not of pods**.
 5. **Same strategy, same seed, same task ids** on both arms — otherwise policy and
    integration are mixed.
 6. Record with every run: Kubernetes version, plugin image digest, extender image digest,
-   `integration`, strategy, seed, scenario, and the features each path had
-   (`/healthz` for the extender, the plugin's startup line).
+   `integration`, strategy, seed, scenario, the telemetry collector, and the features each
+   path had (`/healthz` for the extender, the plugin's startup line). **Check the two arms
+   report the same strategy** before comparing anything.
+7. Report `requests_age_ms` and `telemetry_age_ms` per arm. They are separate fields
+   precisely so that a difference in freshness cannot hide inside one averaged number.
 
 ## What this pilot cannot conclude
 

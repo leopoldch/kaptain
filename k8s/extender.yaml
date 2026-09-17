@@ -17,22 +17,24 @@ spec:
           image: kaptain-extender:dev   # local image loaded into kind
           imagePullPolicy: IfNotPresent
           env:
-            - name: STRATEGY            # single place to switch the active strategy
-              value: "dummy-random"     # or "largest-cpu-capacity", "least-allocated"
+            # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: comparing the two paths
+            # under different strategies measures the policy, not the integration.
+            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
+              value: "dummy-random"
             # The extender protocol carries no per-node requested resources. "api" reads
             # them from the Kubernetes API in the background, which is what makes
             # least-allocated work here and comparable with the plugin.
             - name: KAPTAIN_REQUESTS_SOURCE
               value: "api"
             - name: KAPTAIN_REQUESTS_REFRESH
-              value: "2"
+              value: "2s"
             # Measured node usage, needed by least-used. Collectors: off, metrics-api
             # (requires metrics-server), kubelet (reserved, not implemented). An unknown or
             # unimplemented collector is refused at startup rather than silently ignored.
             - name: KAPTAIN_TELEMETRY
               value: "off"
             - name: KAPTAIN_TELEMETRY_REFRESH
-              value: "2"
+              value: "2s"
             - name: KAPTAIN_SEED
               value: "7"
             - name: RUN_ID

@@ -114,6 +114,17 @@ and are recorded here as resolved, because they change how results must be read.
   per-node `timestamp` from the API, refuse a sample without one, and clamp negative ages
   from clock skew.
 
+- **Sixth review round (2026-09-17).** Three findings from the PR review. The two
+  deployments defaulted to different strategies, which would have made the first comparison
+  measure the policy instead of the integration; both now default to `dummy-random` and the
+  manifests say the values must match. Duration settings used incompatible units — Python
+  read bare seconds, Go a duration string, so `"2"` in the plugin manifest was silently
+  replaced by the default and `"5"` would not have worked at all; both now accept either
+  form and refuse what they cannot parse instead of defaulting. The extender reported one
+  mixed `requests_age_ms` built from the maximum of two unrelated ages; requests and
+  telemetry now have their own field, all the way into the decision log and the
+  `cache_age_seconds` labels.
+
 ### Open
 
 1. **Transport cost is only measurable from the scheduler side, and not with the extension

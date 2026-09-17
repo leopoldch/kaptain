@@ -57,7 +57,10 @@ var (
 )
 
 func New(ctx context.Context, _ runtime.Object, handle framework.Handle) (framework.Plugin, error) {
-	config := configFromEnv()
+	config, err := configFromEnv()
+	if err != nil {
+		return nil, fmt.Errorf("configuration: %w", err)
+	}
 	strategy, err := strategies.Get(config.Strategy)
 	if err != nil {
 		return nil, err
@@ -144,8 +147,11 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 	snapshotDuration.WithLabelValues(strategy, "ok").Observe(snapshotMillis / 1000)
 	candidateNodes.WithLabelValues(strategy).Observe(float64(len(current.Nodes)))
 	for _, node := range current.Nodes {
-		if node.MetricsAgeSeconds > 0 {
-			cacheAgeSeconds.WithLabelValues(p.telemetryName()).Observe(node.MetricsAgeSeconds)
+		if node.TelemetryAgeSeconds > 0 {
+			cacheAgeSeconds.WithLabelValues(p.telemetryName()).Observe(node.TelemetryAgeSeconds)
+		}
+		if node.RequestsAgeSeconds > 0 {
+			cacheAgeSeconds.WithLabelValues(snapshot.FeatureRequested).Observe(node.RequestsAgeSeconds)
 		}
 	}
 

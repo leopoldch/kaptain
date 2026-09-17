@@ -74,7 +74,7 @@ func TestSnapshotCarriesMeasuredUsageWhenAvailable(t *testing.T) {
 	current := p.buildSnapshot(pod("demo", "uid-30", "100m", "64Mi"), nodes)
 
 	measured, absent := current.Nodes[0], current.Nodes[1]
-	if measured.UsedMilliCPU != 900 || measured.MetricsAgeSeconds != 1.5 {
+	if measured.UsedMilliCPU != 900 || measured.TelemetryAgeSeconds != 1.5 {
 		t.Fatalf("measured node carries %+v", measured)
 	}
 	if slices.Contains(measured.Missing, snapshot.FeatureTelemetry) {
@@ -83,8 +83,13 @@ func TestSnapshotCarriesMeasuredUsageWhenAvailable(t *testing.T) {
 	if !slices.Contains(absent.Missing, snapshot.FeatureTelemetry) {
 		t.Error("an unmeasured node does not report telemetry as missing")
 	}
-	if absent.UsedMilliCPU != 0 {
+	if absent.UsedMilliCPU != 0 || absent.TelemetryAgeSeconds != 0 {
 		t.Error("missing telemetry must not be invented")
+	}
+	// Requested resources come from the scheduler cache, so their age is zero here and the
+	// two ages never share a field.
+	if measured.RequestsAgeSeconds != 0 {
+		t.Errorf("requests age %v, want 0 from the scheduler cache", measured.RequestsAgeSeconds)
 	}
 }
 

@@ -1,3 +1,4 @@
+import os
 import time
 from types import SimpleNamespace
 
@@ -153,7 +154,7 @@ def test_snapshot_marks_telemetry_present_only_when_measured():
     measured, absent = snapshot["nodes"]
     assert measured["used_millicpu"] == 900
     assert FEATURE_TELEMETRY not in measured["missing"]
-    assert measured["metrics_age_seconds"] == 1.5
+    assert measured["telemetry_age_seconds"] == 1.5
     assert FEATURE_TELEMETRY in absent["missing"]
     assert absent["used_millicpu"] == 0
 
@@ -332,3 +333,61 @@ def test_open_source_selects_the_collector():
         open_source("prometheus")
 
     assert MetricsApiTelemetry.name == METRICS_API
+
+
+def test_the_two_ages_are_reported_separately():
+    """A mixed age cannot say which source is stale, so requests and telemetry keep
+    their own field, all the way into the decision log."""
+    from decision import Decider
+    from snapshot import build
+    from strategies import get_strategy
+
+    class Requests:
+        def get(self, node):
+            return {"millicpu": 100, "memory_bytes": 128, "pods": 1, "age_seconds": 12.0}
+
+    class Telemetry:
+        name = "metrics-api"
+
+        def get(self, node):
+            return {"millicpu": 900, "memory_bytes": 4096, "age_seconds": 0.5}
+
+    nodes = [{"metadata": {"name": "w1"}, "status": {"allocatable": {"cpu": "4", "memory": "8Gi"}}}]
+    snapshot = build({"metadata": {}}, nodes, "r", "p", "s", 0, Requests(), Telemetry())
+
+    node = snapshot["nodes"][0]
+    assert node["requests_age_seconds"] == 12.0
+    assert node["telemetry_age_seconds"] == 0.5
+
+    pod = {"metadata": {"name": "p", "namespace": "default", "uid": "u"},
+           "spec": {"containers": [{"resources": {"requests": {"cpu": "100m", "memory": "64Mi"}}}]}}
+    decision = Decider(get_strategy("least-used"), requests=Requests(), telemetry=Telemetry()).decide(pod, nodes)
+
+    assert decision.requests_age_ms == 12000.0
+    assert decision.telemetry_age_ms == 500.0
+
+
+def test_durations_accept_both_unit_styles():
+    """The Go plugin and the extender must read the same manifest values the same way."""
+    import pytest as _pytest
+
+    from config import duration, parse_duration
+
+    assert parse_duration("2") == parse_duration("2s") == 2.0
+    assert parse_duration("500ms") == 0.5
+    assert parse_duration("1m30s") == 90.0
+
+    for bad in ("", "2x", "abc", "2 s"):
+        with _pytest.raises(ValueError):
+            parse_duration(bad)
+
+    monkey = "KAPTAIN_TEST_DURATION"
+    os.environ[monkey] = "1500ms"
+    assert duration(monkey, "2s") == 1.5
+    os.environ[monkey] = "nonsense"
+    with _pytest.raises(RuntimeError):
+        duration(monkey, "2s")
+    os.environ[monkey] = "0"
+    with _pytest.raises(RuntimeError):
+        duration(monkey, "2s")
+    del os.environ[monkey]

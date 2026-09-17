@@ -5,6 +5,7 @@ import time
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 
+from config import duration
 from decision import Decider, counters, normalize
 import metrics as extender_metrics
 from snapshot import (FEATURE_ALLOCATABLE, FEATURE_REQUESTED, FEATURE_TELEMETRY, INTEGRATION,
@@ -25,8 +26,8 @@ if os.getenv("KAPTAIN_REQUESTS_SOURCE", "none") == "api":
     from cluster import ApiRequestsSource
 
     requests_source = ApiRequestsSource(
-        refresh_seconds=float(os.getenv("KAPTAIN_REQUESTS_REFRESH", "2")),
-        max_age_seconds=float(os.getenv("KAPTAIN_REQUESTS_MAX_AGE", "30")),
+        refresh_seconds=duration("KAPTAIN_REQUESTS_REFRESH", "2s"),
+        max_age_seconds=duration("KAPTAIN_REQUESTS_MAX_AGE", "30s"),
     )
     requests_source.start()
     available = available | {FEATURE_REQUESTED}
@@ -37,8 +38,8 @@ from telemetry import DISABLED as TELEMETRY_OFF, open_source
 
 telemetry_source = open_source(
     os.getenv("KAPTAIN_TELEMETRY", TELEMETRY_OFF),
-    refresh_seconds=float(os.getenv("KAPTAIN_TELEMETRY_REFRESH", "2")),
-    max_age_seconds=float(os.getenv("KAPTAIN_TELEMETRY_MAX_AGE", "30")),
+    refresh_seconds=duration("KAPTAIN_TELEMETRY_REFRESH", "2s"),
+    max_age_seconds=duration("KAPTAIN_TELEMETRY_MAX_AGE", "30s"),
 )
 if telemetry_source is not None:
     available = available | {FEATURE_TELEMETRY}

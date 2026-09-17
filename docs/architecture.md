@@ -45,6 +45,11 @@ them refuses to start rather than producing a run made of fallbacks.
 **The identity used for seeded draws.**
 [decision 0005](decisions/0005-stable-task-identity.md).
 
+**The configuration units.** Durations accept a Go duration string or a bare number of
+seconds on both sides, and an unparseable value fails at startup instead of silently
+becoming a default. The active strategy must be the same in both deployments; the manifests
+say so where the value is set.
+
 These are pinned by fixtures in `testdata/`, read by both test suites, so a change on one side
 only fails a test instead of quietly changing a result.
 
@@ -55,6 +60,7 @@ only fails a test instead of quietly changing a result.
 | Runs in | its own process, Python | the scheduler process, Go |
 | Transport per decision | HTTP, plus JSON serialisation of the node list | none, unless an external decider is configured |
 | Sees the cluster through | a periodic API refresh, plus its own in-flight ledger | the scheduler cache, plus `Reserve` |
+| Age of requested resources | real, reported as `requests_age_ms` | zero by construction |
 | Knows where the pod landed | no — the protocol ends at the score | yes, `PostBind` |
 | Can time its own transport | no | not applicable |
 | Version coupling | loose | compiled against Kubernetes v1.31.0 |

@@ -42,6 +42,7 @@ class Decision:
     candidate_count: int
     tie_count: int
     requests_age_ms: float
+    telemetry_age_ms: float
     duration_ms: float
     snapshot_duration_ms: float = 0.0
     reserved: bool = False
@@ -75,12 +76,14 @@ class Decider:
 
         metrics.snapshot_duration.labels(name, "ok").observe(snapshot_ms / 1000)
         metrics.candidate_nodes.labels(name).observe(len(candidates))
+        collector = getattr(self.telemetry, "name", snap.FEATURE_TELEMETRY)
         for node in current["nodes"]:
             for absent in node.get("missing", []):
                 metrics.missing_features_total.labels(absent).inc()
-            if node.get("metrics_age_seconds"):
-                collector = getattr(self.telemetry, "name", snap.FEATURE_TELEMETRY)
-                metrics.cache_age_seconds.labels(collector).observe(node["metrics_age_seconds"])
+            if node.get("telemetry_age_seconds"):
+                metrics.cache_age_seconds.labels(collector).observe(node["telemetry_age_seconds"])
+            if node.get("requests_age_seconds"):
+                metrics.cache_age_seconds.labels(snap.FEATURE_REQUESTED).observe(node["requests_age_seconds"])
 
         strategy_started = time.perf_counter()
         reason = None
@@ -111,7 +114,8 @@ class Decider:
         normalize_ms = (time.perf_counter() - normalize_started) * 1000
         top = max(normalized.values())
 
-        age_ms = max((n.get("metrics_age_seconds", 0.0) for n in current["nodes"]), default=0.0) * 1000
+        requests_age_ms = _oldest(current, "requests_age_seconds")
+        telemetry_age_ms = _oldest(current, "telemetry_age_seconds")
 
         decision = Decision(
             node=node,
@@ -119,7 +123,8 @@ class Decider:
             normalized=normalized,
             candidate_count=len(candidates),
             tie_count=sum(1 for score in normalized.values() if score == top),
-            requests_age_ms=age_ms,
+            requests_age_ms=requests_age_ms,
+            telemetry_age_ms=telemetry_age_ms,
             snapshot_duration_ms=snapshot_ms,
             duration_ms=(time.perf_counter() - started) * 1000,
             strategy_duration_ms=strategy_ms,
@@ -172,6 +177,7 @@ class Decider:
             "pod_name": current["pod"]["name"],
             "candidate_count": decision.candidate_count,
             "requests_age_ms": round(decision.requests_age_ms, 3),
+            "telemetry_age_ms": round(decision.telemetry_age_ms, 3),
             "intended_node": decision.node,
             "tie_count": decision.tie_count,
             "score": round(decision.scores.get(decision.node, 0.0), 3),
@@ -189,6 +195,12 @@ class Decider:
             },
             "event": "decision",
         }))
+
+
+def _oldest(current: dict, field: str) -> float:
+    """The oldest of that age across candidates, in milliseconds. A decision is only as
+    fresh as its stalest input."""
+    return max((node.get(field, 0.0) for node in current["nodes"]), default=0.0) * 1000
 
 
 def _valid(current: dict, scores: dict[str, float] | None) -> bool:

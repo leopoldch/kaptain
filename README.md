@@ -77,11 +77,17 @@ files.
 | Pod selects it with | `schedulerName: ml-scheduler` | `schedulerName: kaptain-scheduler` |
 | Policy runs in | the Python service, over HTTP | the scheduler process, or an external decider |
 | Strategy switch | `STRATEGY` env in `k8s/extender.yaml` | `KAPTAIN_STRATEGY` env in `k8s/scheduler-plugin.yaml` |
+| Default strategy | `dummy-random` — **the two must match**, or the comparison measures the policy | `dummy-random` |
 | Good for | fast iteration, ML/LLM in Python | decision-cost measurement close to the scheduler |
 
 Plugin environment: `KAPTAIN_STRATEGY` (`dummy-random`, `largest-cpu-capacity`,
-`least-allocated`), `KAPTAIN_SEED`, `KAPTAIN_DECIDER_URL` and `KAPTAIN_DECIDER_TIMEOUT`
-(empty URL keeps the policy local), `KAPTAIN_RESERVATION_TTL`, `RUN_ID`, `POLICY_VERSION`.
+`least-allocated`, `least-used`), `KAPTAIN_SEED`, `KAPTAIN_DECIDER_URL` and
+`KAPTAIN_DECIDER_TIMEOUT` (empty URL keeps the policy local), `KAPTAIN_RESERVATION_TTL`,
+`KAPTAIN_TELEMETRY` and its refresh and max-age, `RUN_ID`, `POLICY_VERSION`.
+
+**Durations** accept a Go duration string (`2s`, `500ms`) or a bare number of seconds (`2`)
+in **both** deployments, and an unparseable value fails at startup rather than falling back
+to a default — a run must never believe it used a setting it never had.
 
 Extender environment: `STRATEGY`, `KAPTAIN_SEED`, `RUN_ID`, `POLICY_VERSION`, plus
 `KAPTAIN_REQUESTS_SOURCE=api|none` with `KAPTAIN_REQUESTS_REFRESH` and
@@ -228,6 +234,12 @@ extender protocol, not a different policy. Each decision emits one JSON line:
  "fallback": true, "fallback_reason": "strategy_error:ValueError",
  "durations_ms": {"strategy": 0.3, "total": 0.4}}
 ```
+
+**Two ages, never one.** Requested resources and measured usage come from different sources
+at different rates, so each decision reports `requests_age_ms` and `telemetry_age_ms`
+separately, and `cache_age_seconds` is labelled by source. A single mixed age cannot say
+which input was stale. In the plugin the requests age is zero by construction: they come
+from the scheduler cache.
 
 **`intended_node` is not the placement.** It is the node our policy preferred. When several
 nodes end up with the same normalised score, kube-scheduler picks among them at random, so

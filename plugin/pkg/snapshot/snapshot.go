@@ -35,17 +35,20 @@ type Pod struct {
 }
 
 type Node struct {
-	Name                   string   `json:"name"`
-	AllocatableMilliCPU    int64    `json:"allocatable_millicpu"`
-	AllocatableMemoryBytes int64    `json:"allocatable_memory_bytes"`
-	RequestedMilliCPU      int64    `json:"requested_millicpu"`
-	RequestedMemoryBytes   int64    `json:"requested_memory_bytes"`
-	UsedMilliCPU           int64    `json:"used_millicpu"`
-	UsedMemoryBytes        int64    `json:"used_memory_bytes"`
-	Pods                   int      `json:"pods"`
-	Ready                  bool     `json:"ready"`
-	MetricsAgeSeconds      float64  `json:"metrics_age_seconds,omitempty"`
-	Missing                []string `json:"missing,omitempty"`
+	Name                   string `json:"name"`
+	AllocatableMilliCPU    int64  `json:"allocatable_millicpu"`
+	AllocatableMemoryBytes int64  `json:"allocatable_memory_bytes"`
+	RequestedMilliCPU      int64  `json:"requested_millicpu"`
+	RequestedMemoryBytes   int64  `json:"requested_memory_bytes"`
+	UsedMilliCPU           int64  `json:"used_millicpu"`
+	UsedMemoryBytes        int64  `json:"used_memory_bytes"`
+	Pods                   int    `json:"pods"`
+	Ready                  bool   `json:"ready"`
+	// Two ages, never one. Requested resources and measured usage come from different
+	// sources at different rates, and a single mixed age cannot say which one is stale.
+	RequestsAgeSeconds  float64  `json:"requests_age_seconds,omitempty"`
+	TelemetryAgeSeconds float64  `json:"telemetry_age_seconds,omitempty"`
+	Missing             []string `json:"missing,omitempty"`
 }
 
 type Snapshot struct {

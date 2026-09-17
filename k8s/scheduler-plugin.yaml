@@ -25,11 +25,11 @@ spec:
             - --authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics
             - --v=3
           env:
-            # dummy-random and largest-cpu-capacity also run in the extender, so only
-            # those two isolate the effect of the integration. least-allocated is
-            # plugin-only until the extender can read per-node requested resources.
+            # MUST match STRATEGY in extender.yaml: comparing the two paths under
+            # different strategies measures the policy, not the integration. The default is
+            # the control arm, which is also what the integration-cost pilot uses.
             - name: KAPTAIN_STRATEGY
-              value: "largest-cpu-capacity"
+              value: "dummy-random"
             - name: KAPTAIN_SEED          # seeded draw, so dummy-random is reproducible
               value: "7"
             # Uncomment to send decisions to an out-of-process ML/RL/LLM decider.
@@ -43,7 +43,7 @@ spec:
             - name: KAPTAIN_TELEMETRY
               value: "off"
             - name: KAPTAIN_TELEMETRY_REFRESH
-              value: "2"
+              value: "2s"
             - name: RUN_ID
               value: "unset"
             - name: POLICY_VERSION
