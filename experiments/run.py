@@ -50,6 +50,7 @@ class RunRecord:
     arm: str
     plan: str
     scenario: str
+    pair_id: str
     started_at: str
     finished_at: str = ""
     strategy: str = ""
@@ -57,6 +58,10 @@ class RunRecord:
     telemetry_collector: str = ""
     kubernetes_version: str = ""
     feasible_nodes: list[str] = field(default_factory=list)
+    nodes_that_fit: list[str] = field(default_factory=list)
+    scheduler_before: dict = field(default_factory=dict)
+    scheduler_after: dict = field(default_factory=dict)
+    decisions_seen: int = 0
     submissions: list[Submission] = field(default_factory=list)
     aborted: str = ""
 
@@ -179,24 +184,32 @@ def arm_identity(arm: str) -> dict:
     return {"strategy": "", "telemetry_collector": "", "features": []}
 
 
-def run(arm: str, plan_path: Path, out: Path, scenario: str, run_id: str) -> RunRecord:
+def run(arm: str, plan_path: Path, out: Path, scenario: str, run_id: str,
+        pair_id: str) -> RunRecord:
     settings = collect.ARMS[arm]
     plan = Plan.read(plan_path)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Logs are read from this instant on, and then filtered by the pods this run created.
+    since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     record = RunRecord(run_id=run_id, arm=arm, plan=plan_path.name, scenario=scenario,
-                       started_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+                       pair_id=pair_id, started_at=since)
     try:
         # Guard: no leftovers, or the previous run's pods are counted in this one.
         if collect.pods(LABEL):
             raise Aborted("pods from a previous run are still present; clean up first")
 
-        # Guard: scoring is skipped entirely when a single node survives filtering, so with
-        # fewer than two feasible nodes neither integration would run at all.
+        # Guard: readiness is not feasibility. Scoring is skipped entirely when filtering
+        # leaves a single node, so what matters is how many nodes have room for a task of
+        # this plan, not how many are Ready.
         record.feasible_nodes = collect.feasible_nodes()
-        if len(record.feasible_nodes) < 2:
-            raise Aborted(f"only {len(record.feasible_nodes)} feasible node(s); the scheduler "
-                          "would skip scoring and the run would measure nothing")
+        biggest = max(plan.tasks, key=lambda task: collect.quantity(task.cpu))
+        record.nodes_that_fit = collect.nodes_that_fit(biggest.cpu, biggest.memory)
+        if len(record.nodes_that_fit) < 2:
+            raise Aborted(
+                f"only {len(record.nodes_that_fit)} node(s) have room for a {biggest.cpu}/"
+                f"{biggest.memory} pod ({len(record.feasible_nodes)} are Ready); the scheduler "
+                "would skip scoring and the run would measure nothing")
 
         identity = arm_identity(arm)
         record.strategy = identity["strategy"]
@@ -204,6 +217,7 @@ def run(arm: str, plan_path: Path, out: Path, scenario: str, run_id: str) -> Run
         version = json.loads(collect.kubectl("version", "-o", "json"))
         record.kubernetes_version = version.get("serverVersion", {}).get("gitVersion", "")
 
+        record.scheduler_before = collect.scheduler_identity(settings["scheduler_deploy"])
         before = collect.scrape(settings["scheduler_deploy"], settings["scheduler_port"],
                                settings["scheduler_scheme"])
         own_before = collect.scrape(settings["own_deploy"], settings["own_port"],
@@ -216,14 +230,42 @@ def run(arm: str, plan_path: Path, out: Path, scenario: str, run_id: str) -> Run
                                settings["scheduler_scheme"])
         own_after = collect.scrape(settings["own_deploy"], settings["own_port"],
                                    settings["own_scheme"])
+        record.scheduler_after = collect.scheduler_identity(settings["scheduler_deploy"])
+
+        # Guard: a restart resets the counters, and a busy scheduler can climb back past its
+        # earlier values, so a delta that looks sane proves nothing on its own.
+        if not collect.same_process(before, after):
+            raise Aborted("the scheduler process restarted during the run")
+        if (record.scheduler_before["pod_uid"] != record.scheduler_after["pod_uid"]
+                or record.scheduler_before["restarts"] != record.scheduler_after["restarts"]):
+            raise Aborted("the scheduler pod restarted during the run")
 
         (out / "scheduler_metrics_before.txt").write_text(before)
         (out / "scheduler_metrics_after.txt").write_text(after)
         (out / "own_metrics_before.txt").write_text(own_before)
         (out / "own_metrics_after.txt").write_text(own_after)
         _write_rows(out / "pods.csv", rows)
-        (out / "decisions.jsonl").write_text("\n".join(
-            json.dumps(entry) for entry in collect.decision_log(settings["own_deploy"])) + "\n")
+        # Only the lines about the pods this run created: the deployment keeps serving
+        # other pods, and the previous run's tail is still in the log.
+        uids = {row["pod_uid"] for row in rows}
+        entries = collect.decision_log(settings["own_deploy"], since, uids)
+        (out / "decisions.jsonl").write_text(
+            "\n".join(json.dumps(entry) for entry in entries) + "\n")
+
+        decisions = [entry for entry in entries if entry.get("event") == "decision"]
+        record.decisions_seen = len(decisions)
+
+        # Guard: did scoring actually run? Fewer decisions than pods means the scheduler
+        # placed some of them without ever calling us -- a single feasible candidate, most
+        # likely -- and those placements are not measurements of anything we did.
+        if len(decisions) < len(rows):
+            raise Aborted(
+                f"{len(rows)} pods placed but only {len(decisions)} decisions recorded: "
+                "scoring was skipped for some pods, so this run cannot be compared")
+        single = [entry for entry in decisions if entry.get("candidate_count", 0) < 2]
+        if single:
+            raise Aborted(f"{len(single)} decision(s) saw a single candidate; the comparison "
+                          "would include placements nobody scored")
 
     except Aborted as failure:
         record.aborted = str(failure)
@@ -259,10 +301,12 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--scenario", default="A-light")
     parser.add_argument("--run-id", default=None)
+    parser.add_argument("--pair", default="1",
+                        help="pair identifier: the two arms of one pair must share it")
     args = parser.parse_args()
 
     run_id = args.run_id or f"{time.strftime('%Y%m%d-%H%M%S')}-{args.arm}"
-    record = run(args.arm, args.plan, args.out, args.scenario, run_id)
+    record = run(args.arm, args.plan, args.out, args.scenario, run_id, args.pair)
 
     if record.aborted:
         print(f"ABORTED ({args.arm}): {record.aborted}", file=sys.stderr)

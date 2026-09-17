@@ -96,26 +96,57 @@ def test_bursts_arrive_together():
     assert len(set(burst)) == 1
 
 
+def row(arm, pair_id, mean=None, strategy="dummy-random", aborted="", scenario="A"):
+    entry = {"run_id": f"{arm}-{pair_id}", "arm": arm, "pair_id": pair_id,
+             "scenario": scenario, "strategy": strategy, "aborted": aborted}
+    if mean is not None:
+        entry["algorithm_mean_ms"] = mean
+        entry["algorithm_unresolved_share"] = 0.1
+    return entry
+
+
 def test_pairing_refuses_arms_with_different_strategies():
+    paired = analyse.pair([row("extender", "1", 3.0),
+                           row("plugin", "1", 1.0, strategy="least-allocated")])
+    assert len(paired) == 1 and "strategies differ" in paired[0]["aborted"]
+
+
+def test_pairing_uses_the_pair_id_not_the_order():
+    """A failed run must not shift every later pair onto the wrong counterpart."""
     rows = [
-        {"run_id": "a", "arm": "extender", "scenario": "A", "strategy": "dummy-random",
-         "algorithm_mean_ms": 3.0, "algorithm_unresolved_share": 0.1, "aborted": ""},
-        {"run_id": "b", "arm": "plugin", "scenario": "A", "strategy": "least-allocated",
-         "algorithm_mean_ms": 1.0, "algorithm_unresolved_share": 0.1, "aborted": ""},
+        row("extender", "1", 3.0),
+        row("plugin", "1", aborted="only 1 node had room"),
+        row("extender", "2", 3.4),
+        row("plugin", "2", 1.2),
+        row("extender", "3", 2.8),
+        row("plugin", "3", 1.1),
     ]
     paired = analyse.pair(rows)
-    assert len(paired) == 1 and "strategies differ" in paired[0]["aborted"]
+    by_id = {entry["pair_id"]: entry for entry in paired}
+
+    assert by_id["1"]["aborted"].startswith("plugin:")
+    # Pair 2 is still pair 2: extender 3.4 against plugin 1.2, not against 1.1.
+    assert by_id["2"]["extender_mean_ms"] == 3.4 and by_id["2"]["plugin_mean_ms"] == 1.2
+    assert by_id["3"]["difference_ms"] == 1.7
+
+
+def test_a_missing_arm_is_an_unusable_pair():
+    paired = analyse.pair([row("extender", "1", 3.0)])
+    assert paired[0]["aborted"] == "the plugin arm of this pair is missing"
+
+
+def test_a_missing_mean_never_becomes_zero():
+    """Reading a missing mean as 0 would invent a difference the size of the other arm."""
+    paired = analyse.pair([row("extender", "1", 3.0), row("plugin", "1")])
+    assert paired[0]["aborted"] == "a mean is missing on one arm"
+    assert "difference_ms" not in paired[0]
 
 
 def test_paired_difference_and_interval():
     rows = []
     for index, (extender, plugin) in enumerate([(3.0, 1.0), (3.4, 1.2), (2.8, 1.1)]):
-        rows.append({"run_id": f"e{index}", "arm": "extender", "scenario": "A",
-                     "strategy": "dummy-random", "algorithm_mean_ms": extender,
-                     "algorithm_unresolved_share": 0.0, "aborted": ""})
-        rows.append({"run_id": f"p{index}", "arm": "plugin", "scenario": "A",
-                     "strategy": "dummy-random", "algorithm_mean_ms": plugin,
-                     "algorithm_unresolved_share": 0.0, "aborted": ""})
+        rows.append(row("extender", str(index), extender))
+        rows.append(row("plugin", str(index), plugin))
 
     paired = analyse.pair(rows)
     assert [p["difference_ms"] for p in paired] == [2.0, 2.2, 1.7]
@@ -129,8 +160,67 @@ def test_aborted_runs_are_reported_not_averaged(tmp_path: Path):
     directory = tmp_path / "0001-plugin"
     directory.mkdir()
     (directory / "run.json").write_text(json.dumps({
-        "run_id": "0001", "arm": "plugin", "aborted": "only 1 feasible node"}))
+        "run_id": "0001", "arm": "plugin", "pair_id": "1", "scenario": "A",
+        "aborted": "only 1 node had room"}))
 
-    row = analyse.summarise_run(directory)
-    assert row["aborted"] == "only 1 feasible node"
-    assert analyse.pair([row]) == []
+    summary = analyse.summarise_run(directory)
+    assert summary["aborted"] == "only 1 node had room"
+
+    paired = analyse.pair([summary])
+    assert len(paired) == 1 and paired[0]["aborted"].startswith("the extender arm")
+
+
+MULTI_LABEL = """# TYPE scheduler_framework_extension_point_duration_seconds histogram
+scheduler_framework_extension_point_duration_seconds_bucket{extension_point="Score",le="0.001"} 10
+scheduler_framework_extension_point_duration_seconds_bucket{extension_point="Score",le="+Inf"} 20
+scheduler_framework_extension_point_duration_seconds_sum{extension_point="Score"} 0.02
+scheduler_framework_extension_point_duration_seconds_count{extension_point="Score"} 20
+scheduler_framework_extension_point_duration_seconds_bucket{extension_point="PreScore",le="0.001"} 5
+scheduler_framework_extension_point_duration_seconds_bucket{extension_point="PreScore",le="+Inf"} 20
+scheduler_framework_extension_point_duration_seconds_sum{extension_point="PreScore"} 0.03
+scheduler_framework_extension_point_duration_seconds_count{extension_point="PreScore"} 20
+"""
+
+
+def test_buckets_are_summed_across_label_sets_like_sum_and_count():
+    """Overwriting instead of accumulating gave one label set's buckets against everyone's
+    count, which quietly moved every quantile."""
+    histogram = collect.parse_histogram(
+        MULTI_LABEL, "scheduler_framework_extension_point_duration_seconds")
+
+    assert histogram.count == 40
+    assert histogram.buckets[0.001] == 15      # 10 + 5, not 5
+    assert histogram.buckets[float("inf")] == 40
+
+
+def test_selecting_one_label_set_keeps_its_own_buckets():
+    histogram = collect.parse_histogram(
+        MULTI_LABEL, "scheduler_framework_extension_point_duration_seconds",
+        {"extension_point": "Score"})
+    assert histogram.count == 20 and histogram.buckets[0.001] == 10
+
+
+def test_a_restart_is_detected_even_when_counters_climbed_past():
+    """A restart resets the counters; a busy scheduler then climbs back above the earlier
+    values, so the delta looks perfectly sane. The process start time is what settles it."""
+    before = "process_start_time_seconds 1000\n" + exposition(3)
+    after = "process_start_time_seconds 2500\n" + exposition(5)
+
+    assert collect.process_identity(before) == 1000
+    assert not collect.same_process(before, after)
+    # And the counters alone would have raised nothing:
+    collect.delta(collect.parse_histogram(before, analyse.PRIMARY),
+                  collect.parse_histogram(after, analyse.PRIMARY))
+
+
+def test_same_process_requires_the_marker():
+    same = "process_start_time_seconds 1000\n"
+    assert collect.same_process(same, same)
+    assert not collect.same_process("", same)
+
+
+def test_quantity_parsing_for_capacity_checks():
+    assert collect.quantity("2") == 2
+    assert collect.quantity("500m") == 0.5
+    assert collect.quantity("64Mi") == 64 * 1024 ** 2
+    assert collect.quantity("123456789n") == pytest.approx(0.123456789)

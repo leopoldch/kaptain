@@ -145,7 +145,11 @@ def parse_histogram(text: str, metric: str, labels: dict[str, str] | None = None
             continue
 
         if name == f"{metric}_bucket":
-            buckets[float(series_labels["le"])] = value
+            # Accumulate: several label sets contribute to the same bucket, exactly as they
+            # do to _sum and _count. Overwriting here silently produced quantiles computed
+            # from one label set against a count from all of them.
+            le = float(series_labels["le"])
+            buckets[le] = buckets.get(le, 0.0) + value
         elif name == f"{metric}_sum":
             total += value
         elif name == f"{metric}_count":
@@ -154,12 +158,48 @@ def parse_histogram(text: str, metric: str, labels: dict[str, str] | None = None
     return Histogram(count=count, total=total, buckets=buckets)
 
 
+def process_identity(text: str) -> float | None:
+    """The exporter's process start time, which changes on every restart."""
+    for line in text.splitlines():
+        if line.startswith("process_start_time_seconds"):
+            return float(line.rsplit(" ", 1)[1])
+    return None
+
+
+def same_process(before: str, after: str) -> bool:
+    """Whether both scrapes came from the same process instance.
+
+    Counters going backwards catch an obvious restart, but not one followed by enough
+    activity to climb past the earlier values -- which is exactly what a busy scheduler does.
+    The process start time settles it; the caller also compares the scheduler pod's identity
+    and restart count.
+    """
+    first, second = process_identity(before), process_identity(after)
+    if first is None or second is None:
+        return False
+    return first == second
+
+
+def scheduler_identity(deployment: str, namespace: str = NAMESPACE) -> dict:
+    """Pod UID and container restart count, to detect a restart the metrics could hide."""
+    document = json.loads(kubectl("-n", namespace, "get", "pods", "-l", f"app={deployment}",
+                                  "-o", "json"))
+    items = document.get("items", [])
+    if not items:
+        raise CollectionError(f"no pod found for {deployment}")
+    pod = items[0]
+    restarts = sum(status.get("restartCount", 0)
+                   for status in pod.get("status", {}).get("containerStatuses", []) or [])
+    return {"pod_uid": pod["metadata"]["uid"], "restarts": restarts,
+            "started_at": pod.get("status", {}).get("startTime", "")}
+
+
 def delta(before: Histogram, after: Histogram) -> Histogram:
     """The observations recorded during the run.
 
-    Valid only if the process did not restart in between: a restart resets the counters and
-    the delta goes negative, which the caller must treat as a failed run rather than as a
-    number. It also assumes nothing else used that scheduler during the window.
+    Valid only if the process did not restart in between. A restart resets the counters, and
+    a restart plus enough traffic can leave them *above* their earlier values, so the caller
+    must also compare process identities -- see same_process and scheduler_identity.
     """
     if after.count < before.count or after.total < before.total:
         raise CollectionError(
@@ -242,10 +282,18 @@ def placements(selector: str, namespace: str = "default") -> list[dict]:
     return rows
 
 
-def decision_log(deployment: str, since: str = "1h", namespace: str = NAMESPACE) -> list[dict]:
-    """The JSON decision lines of an arm, skipping whatever else it printed."""
-    text = kubectl("-n", namespace, "logs", f"deploy/{deployment}", f"--since={since}",
-                   "--tail=-1", check=False)
+def decision_log(deployment: str, since_time: str, pod_uids: set[str],
+                 namespace: str = NAMESPACE) -> list[dict]:
+    """The decision lines belonging to **this run**, and to no other.
+
+    Two filters, because neither is sufficient. `--since-time` bounds the window but the
+    deployment keeps serving other pods -- a leftover, a system pod, the previous run's tail.
+    The pod UID set is the authoritative filter: a line counts only if it decided about a pod
+    this run created. Without it, the fallback counters and our internal means would silently
+    include earlier runs.
+    """
+    text = kubectl("-n", namespace, "logs", f"deploy/{deployment}",
+                   f"--since-time={since_time}", "--tail=-1", check=False)
     lines = []
     for line in text.splitlines():
         line = line.strip()
@@ -255,9 +303,66 @@ def decision_log(deployment: str, since: str = "1h", namespace: str = NAMESPACE)
             entry = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if entry.get("event") in {"decision", "binding"}:
-            lines.append(entry)
+        if entry.get("event") not in {"decision", "binding"}:
+            continue
+        if entry.get("pod_uid") not in pod_uids:
+            continue
+        lines.append(entry)
     return lines
+
+
+_SUFFIXES = {"n": 1e-9, "u": 1e-6, "m": 1e-3, "k": 1e3, "M": 1e6, "G": 1e9, "T": 1e12,
+             "Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40}
+
+
+def quantity(text: str) -> float:
+    """A Kubernetes quantity as a float. Good enough to compare capacities."""
+    text = str(text).strip()
+    if not text:
+        return 0.0
+    for suffix in ("Ki", "Mi", "Gi", "Ti"):
+        if text.endswith(suffix):
+            return float(text[:-2]) * _SUFFIXES[suffix]
+    if text[-1] in _SUFFIXES:
+        return float(text[:-1]) * _SUFFIXES[text[-1]]
+    return float(text)
+
+
+def free_capacity() -> dict[str, dict[str, float]]:
+    """Allocatable minus the requests already bound, per schedulable node."""
+    nodes = json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
+    pods = json.loads(kubectl("get", "pods", "--all-namespaces", "-o", "json"))["items"]
+
+    free = {}
+    for node in nodes:
+        if node["metadata"]["name"] not in set(feasible_nodes()):
+            continue
+        allocatable = node["status"].get("allocatable", {})
+        free[node["metadata"]["name"]] = {
+            "cpu": quantity(allocatable.get("cpu", "0")),
+            "memory": quantity(allocatable.get("memory", "0")),
+        }
+
+    for pod in pods:
+        node = pod.get("spec", {}).get("nodeName")
+        if node not in free or pod.get("status", {}).get("phase") in {"Succeeded", "Failed"}:
+            continue
+        for container in pod["spec"].get("containers", []) or []:
+            requests = (container.get("resources", {}) or {}).get("requests", {}) or {}
+            free[node]["cpu"] -= quantity(requests.get("cpu", "0"))
+            free[node]["memory"] -= quantity(requests.get("memory", "0"))
+    return free
+
+
+def nodes_that_fit(cpu: str, memory: str) -> list[str]:
+    """Nodes with room for one pod of that size, right now.
+
+    Readiness is not feasibility. When filtering leaves a single node, kube-scheduler returns
+    it without scoring at all, so neither integration runs and the run measures nothing.
+    """
+    needed_cpu, needed_memory = quantity(cpu), quantity(memory)
+    return sorted(name for name, left in free_capacity().items()
+                  if left["cpu"] >= needed_cpu and left["memory"] >= needed_memory)
 
 
 def feasible_nodes() -> list[str]:

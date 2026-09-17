@@ -41,17 +41,21 @@ def summarise_run(directory: Path) -> dict | None:
         return None
     record = json.loads(record_path.read_text())
     if record.get("aborted"):
-        return {"run_id": record["run_id"], "arm": record["arm"], "aborted": record["aborted"]}
+        return {"run_id": record["run_id"], "arm": record["arm"],
+                "pair_id": record.get("pair_id", ""), "scenario": record.get("scenario", ""),
+                "aborted": record["aborted"]}
 
     before_path, after_path = directory / "scheduler_metrics_before.txt", directory / "scheduler_metrics_after.txt"
     if not (before_path.exists() and after_path.exists()):
         return {"run_id": record["run_id"], "arm": record["arm"],
+                "pair_id": record.get("pair_id", ""), "scenario": record.get("scenario", ""),
                 "aborted": "scheduler metrics were not collected"}
 
     before, after = before_path.read_text(), after_path.read_text()
     row = {
         "run_id": record["run_id"],
         "arm": record["arm"],
+        "pair_id": record.get("pair_id", ""),
         "scenario": record.get("scenario", ""),
         "strategy": record.get("strategy", ""),
         "telemetry_collector": record.get("telemetry_collector", ""),
@@ -131,34 +135,59 @@ def _quantile_ms(histogram: collect.Histogram, q: float) -> str | float | None:
 
 
 def pair(rows: list[dict]) -> list[dict]:
-    """Match runs by scenario and order, one arm against the other."""
-    usable = [row for row in rows if not row.get("aborted")]
-    arms = {}
-    for row in usable:
-        arms.setdefault((row["scenario"], row["arm"]), []).append(row)
+    """Match the two arms of a pair by their explicit pair_id.
+
+    Not by position: dropping the aborted runs and zipping what is left shifts every
+    subsequent pair, so one failed run would silently compare run 3 of one arm against run 4
+    of the other. A pair is formed only when both arms of that same pair_id succeeded, ran
+    the same scenario and reported the same strategy.
+    """
+    prefix = _short(PRIMARY)
+    grouped: dict[tuple[str, str], dict[str, dict]] = {}
+    for row in rows:
+        key = (row.get("scenario", ""), str(row.get("pair_id", "")))
+        grouped.setdefault(key, {})[row["arm"]] = row
 
     pairs = []
-    scenarios = {scenario for scenario, _ in arms}
-    for scenario in sorted(scenarios):
-        extender = arms.get((scenario, "extender"), [])
-        plugin = arms.get((scenario, "plugin"), [])
-        for index, (left, right) in enumerate(zip(extender, plugin)):
-            if left["strategy"] != right["strategy"]:
-                pairs.append({"scenario": scenario, "pair": index,
-                              "aborted": f"strategies differ: {left['strategy']!r} vs {right['strategy']!r}"})
-                continue
-            prefix = _short(PRIMARY)
-            pairs.append({
-                "scenario": scenario,
-                "pair": index,
-                "strategy": left["strategy"],
-                "extender_mean_ms": left[f"{prefix}_mean_ms"],
-                "plugin_mean_ms": right[f"{prefix}_mean_ms"],
-                "difference_ms": _round((left[f"{prefix}_mean_ms"] or 0) - (right[f"{prefix}_mean_ms"] or 0)),
-                "extender_unresolved_share": left[f"{prefix}_unresolved_share"],
-                "plugin_unresolved_share": right[f"{prefix}_unresolved_share"],
-                "aborted": "",
-            })
+    for (scenario, pair_id), arms in sorted(grouped.items()):
+        entry = {"scenario": scenario, "pair_id": pair_id, "aborted": ""}
+        left, right = arms.get("extender"), arms.get("plugin")
+
+        if left is None or right is None:
+            missing = "plugin" if right is None else "extender"
+            entry["aborted"] = f"the {missing} arm of this pair is missing"
+            pairs.append(entry)
+            continue
+        if left.get("aborted") or right.get("aborted"):
+            entry["aborted"] = ("extender: " + left["aborted"] if left.get("aborted")
+                                else "plugin: " + right["aborted"])
+            pairs.append(entry)
+            continue
+        if left.get("strategy") != right.get("strategy"):
+            entry["aborted"] = (f"strategies differ: {left.get('strategy')!r} vs "
+                                f"{right.get('strategy')!r}")
+            pairs.append(entry)
+            continue
+
+        extender_mean, plugin_mean = left.get(f"{prefix}_mean_ms"), right.get(f"{prefix}_mean_ms")
+        if extender_mean is None or plugin_mean is None:
+            # A missing mean is missing, never zero: treating it as a number would invent a
+            # difference the size of the other arm's latency.
+            entry["aborted"] = "a mean is missing on one arm"
+            pairs.append(entry)
+            continue
+
+        entry.update({
+            "strategy": left.get("strategy"),
+            "extender_run": left["run_id"],
+            "plugin_run": right["run_id"],
+            "extender_mean_ms": extender_mean,
+            "plugin_mean_ms": plugin_mean,
+            "difference_ms": _round(extender_mean - plugin_mean),
+            "extender_unresolved_share": left.get(f"{prefix}_unresolved_share"),
+            "plugin_unresolved_share": right.get(f"{prefix}_unresolved_share"),
+        })
+        pairs.append(entry)
     return pairs
 
 
@@ -205,11 +234,15 @@ def main() -> int:
     print(f"{len(rows)} runs, {len(aborted)} aborted -> {args.out}")
     for row in aborted:
         print(f"  aborted {row['run_id']}: {row['aborted']}")
-    print(f"{summary['pairs']} usable pairs")
+    incomplete = [p for p in pairs if p.get("aborted")]
+    for entry in incomplete:
+        print(f"  unusable pair {entry.get('scenario')}/{entry.get('pair_id')}: {entry['aborted']}")
+    print(f"{summary['pairs']} usable pairs out of {len(pairs)}")
     if summary["mean_ms"] is not None:
         print(f"  extender - plugin, {_short(PRIMARY)} mean: "
               f"{summary['mean_ms']} ms [{summary['low_ms']}, {summary['high_ms']}] (95%)")
-    unresolved = [p["extender_unresolved_share"] for p in pairs if p.get("extender_unresolved_share")]
+    unresolved = [p.get("extender_unresolved_share") for p in pairs
+                  if p.get("extender_unresolved_share")]
     if unresolved and max(unresolved) > 0.5:
         print("  note: over half the observations fall in the first 1 ms bucket; "
               "the mean is usable, the quantiles are not")

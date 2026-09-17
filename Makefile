@@ -133,15 +133,20 @@ smoke-plugin: $(PLAN)
 	  steady_then_bursts(name='smoke', steady_count=6, steady_interval_s=0.5, bursts=1, burst_size=4).write(__import__('pathlib').Path('smoke.json'))"
 	cd experiments && python3 run.py --arm plugin --plan smoke.json --out runs/smoke-plugin --scenario smoke
 
-# One pair. PAIRS=10 for the real thing; arms alternate so machine drift affects both.
+# One pair. PAIRS=10 for the real thing.
+# The order inside a pair alternates: always running extender first would give the plugin a
+# machine that the extender run just warmed up (or disturbed), and that bias would land
+# entirely in the difference we are trying to measure.
 PAIRS ?= 1
 pilot: $(PLAN)
 	@cd experiments && for pair in $$(seq 1 $(PAIRS)); do \
-	  printf '\n== pair %s/%s ==\n' "$$pair" "$(PAIRS)"; \
-	  python3 run.py --arm extender --plan plan.json --scenario $(SCENARIO) \
-	    --out runs/$(SCENARIO)-$$pair-extender || exit 1; \
-	  python3 run.py --arm plugin   --plan plan.json --scenario $(SCENARIO) \
-	    --out runs/$(SCENARIO)-$$pair-plugin   || exit 1; \
+	  if [ $$(( pair % 2 )) -eq 1 ]; then first=extender; second=plugin; \
+	  else first=plugin; second=extender; fi; \
+	  printf '\n== pair %s/%s (%s then %s) ==\n' "$$pair" "$(PAIRS)" "$$first" "$$second"; \
+	  python3 run.py --arm $$first  --plan plan.json --scenario $(SCENARIO) --pair $$pair \
+	    --out runs/$(SCENARIO)-$$pair-$$first  || exit 1; \
+	  python3 run.py --arm $$second --plan plan.json --scenario $(SCENARIO) --pair $$pair \
+	    --out runs/$(SCENARIO)-$$pair-$$second || exit 1; \
 	done
 
 analyse:

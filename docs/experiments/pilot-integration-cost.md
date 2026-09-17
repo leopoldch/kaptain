@@ -72,8 +72,16 @@ lands in that bucket and means only "below 1 ms". The analysis reports such a qu
 `<1.0ms` and prints the share of observations that fell in the first bucket. The mean stays
 usable; the quantiles do not, and must not be dressed up as measurements.
 
-**Paired differences are computed at the level of runs.** Ten pairs give ten differences, and
-the interval is over those, reported beside the individual values.
+**Paired differences are computed at the level of runs**, and matched by an explicit
+`pair_id`, never by position: dropping the aborted runs and zipping what is left would
+compare run 3 of one arm against run 4 of the other. A pair where one arm aborted, or where
+a mean is missing, is reported as unusable — a missing mean is never read as zero, which
+would invent a difference the size of the other arm's latency. Ten pairs give ten
+differences, and the interval is over those, reported beside the individual values.
+
+**The order inside a pair alternates.** Always running the extender first would hand the
+plugin a machine the extender run just warmed up or disturbed, and that bias would land
+entirely in the difference being measured.
 
 Our own `kaptain_*` series decompose a decision (snapshot, policy, normalisation) and are
 exact, but they never settle the comparison: on the extender path they exclude the transport,
@@ -81,31 +89,46 @@ which is the whole question.
 
 ## Guards, without which the numbers mean nothing
 
-1. **At least two feasible nodes at all times.** Checked in the 1.31 source: when a single
-   node survives filtering, `schedulePod` returns it directly and **never calls scoring**
-   (`schedule_one.go`, "When only one node after predicate, just use it"). Neither our
-   plugin nor the extender would run, and the run would silently measure nothing. Size the
-   pods so at least two workers always fit, and count decisions against pods placed.
-2. **One arm at a time.** Two schedulers placing concurrently race for the same nodes.
-3. **Images preloaded** into every node (`kind load docker-image`), or the first pods
+Each of these aborts the run with a reason. A run that quietly measured the wrong thing is
+worse than a run that failed.
+
+1. **At least two nodes with room, and proof that scoring ran.** Checked in the 1.31
+   source: when a single node survives filtering, `schedulePod` returns it directly and
+   **never calls scoring** (`schedule_one.go`, "When only one node after predicate, just use
+   it"). Readiness is not enough to rule that out — the runner computes allocatable minus
+   bound requests per node and requires at least two nodes able to hold the plan's largest
+   task. Afterwards it verifies that scoring actually happened: one decision line per placed
+   pod, and every decision seeing at least two candidates. Fewer decisions than pods means
+   some placements were never scored by either integration, and the run is unusable.
+2. **The scheduler must be the same process throughout.** A restart resets the histogram
+   counters, and a busy scheduler then climbs back past its earlier values, so a delta that
+   looks sane proves nothing. The runner compares `process_start_time_seconds` between the
+   two scrapes, plus the scheduler pod's UID and container restart count, and aborts if any
+   changed.
+3. **Decision logs belong to one run.** The deployment keeps serving other pods and the
+   previous run's lines are still in the log, so the collector reads from the run's start
+   instant **and** keeps only the lines whose `pod_uid` belongs to a pod this run created.
+   Without that filter, fallback counts and our internal means silently include earlier runs.
+4. **One arm at a time.** Two schedulers placing concurrently race for the same nodes.
+5. **Images preloaded** into every node (`kind load docker-image`), or the first pods
    measure image pulls.
-4. **Initial state restored** between runs: delete the workload, wait for the node totals to
+6. **Initial state restored** between runs: delete the workload, wait for the node totals to
    return to baseline, and record that it did.
-5. **Same strategy, same seed, same task ids** on both arms — otherwise policy and
+7. **Same strategy, same seed, same task ids** on both arms — otherwise policy and
    integration are mixed.
-6. Record with every run: Kubernetes version, plugin image digest, extender image digest,
+8. Record with every run: Kubernetes version, plugin image digest, extender image digest,
    `integration`, strategy, seed, scenario, the telemetry collector, and the features each
    path had (`/healthz` for the extender, the plugin's startup line). **Check the two arms
    report the same strategy** before comparing anything.
-7. **Record the real submission instants and their lag against the plan.** The runner uses
+9. **Record the real submission instants and their lag against the plan.** The runner uses
    one `kubectl` per pod, and a process start costs tens of milliseconds: a burst submitted
    that way may not have been a burst. `run.json` holds the planned and actual offset of
    every pod, and `summary.csv` carries the worst lag of the run. A pair whose lag is large
    relative to the burst window says something about the runner, not about the schedulers.
-8. **`kubectl` acts with the permissions of the current kubeconfig**, and the run record
+10. **`kubectl` acts with the permissions of the current kubeconfig**, and the run record
    states the server version it talked to. A run made with different permissions, or against
    a different cluster, is a different run.
-9. Report `requests_age_ms` and `telemetry_age_ms` per arm. They are separate fields
+11. Report `requests_age_ms` and `telemetry_age_ms` per arm. They are separate fields
    precisely so that a difference in freshness cannot hide inside one averaged number.
 
 ## What this pilot cannot conclude
