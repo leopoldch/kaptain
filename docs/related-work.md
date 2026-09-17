@@ -1733,13 +1733,16 @@ and are recorded here as resolved, because they change how results must be read.
 
 ### Open
 
-1. **Transport cost is only measurable from the scheduler side.** The extender cannot time
-   its own RPC; that number comes from kube-scheduler's
-   `scheduler_framework_extension_point_duration_seconds` and must be reported beside our
-   handler duration. This asymmetry is the reason the plugin exists, not a defect to fix.
-2. **No experiment runner.** No arrival generator, no `run.json` / `jobs.csv` /
-   `decisions.csv` / `summary.csv`, so nothing aggregates the per-decision logs into a
-   result yet. This is now the blocking item.
+1. **Transport cost is only measurable from the scheduler side, and not with the extension
+   point metric.** Checked in the 1.31 source: extenders are called outside the framework
+   extension points, so `scheduler_framework_extension_point_duration_seconds` excludes the
+   extender round trip. The comparable metric is
+   `scheduler_scheduling_algorithm_duration_seconds`. The pilot that settles this is
+   specified in `experiments/README.md`; it is the first experiment this repository can
+   honestly run.
+2. **No experiment runner.** No arrival generator, no `run.json` / `pods.csv` /
+   `summary.csv`, so nothing aggregates the per-decision logs into a result yet. This is the
+   blocking item, and `experiments/README.md` now says exactly what it has to produce.
 3. **No ML/RL/LLM policy.** They reach either path through the external decider, which has
    no service behind it yet.
 4. **Whole `NodeList` serialised per pod** with `nodeCacheCapable: false`. Fine at 3 nodes;

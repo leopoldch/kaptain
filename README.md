@@ -105,11 +105,16 @@ does not fix that — it only makes it visible. Two consequences:
   HTTP transport, the JSON serialisation of the NodeList, or the Scheduling Framework
   overhead. It is the right measurement for inference cost and decision stability, and the
   wrong one for the cost of an integration.
-- the **integration overhead** can only be measured in cluster, and from the scheduler's
-  side: `scheduler_framework_extension_point_duration_seconds` and
-  `scheduler_e2e_scheduling_duration_seconds` for both paths, next to our own
-  `kaptain_*_score_duration_seconds`. The difference between the two pairs is the transport,
-  and it is exactly what the plugin exists to remove.
+- the **integration overhead** can only be measured in cluster, from the scheduler's side,
+  and with the right metric. Extenders are called from `findNodesThatPassExtenders` and
+  inside `prioritizeNodes`, both **outside** the framework extension points, so
+  `scheduler_framework_extension_point_duration_seconds` does *not* contain the extender
+  round trip — it covers the plugin's work and, on the extender arm, only the native
+  plugins. The metric comparable across both paths is
+  **`scheduler_scheduling_algorithm_duration_seconds`** (filter, extenders and scoring),
+  with `scheduler_scheduling_attempt_duration_seconds` and
+  `scheduler_pod_scheduling_sli_duration_seconds` beside it. The protocol is in
+  [`experiments/README.md`](experiments/README.md).
 - in cluster, report the freshness difference rather than assume it away: each extender
   decision logs `requests_age_ms`, which is 0 in the plugin because the scheduler cache is
   current. The extender holds its own in-flight decisions until the API refresh observes
