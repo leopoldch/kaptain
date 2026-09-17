@@ -25,6 +25,11 @@ readiness, the age of each measurement, and the list of feature groups that are 
 Absence is declared, never encoded as zero. See
 [decision 0003](decisions/0003-shared-snapshot-contract.md).
 
+**The telemetry collector.** Selected by configuration behind a stable interface, and named
+in the run record: `off`, `metrics-api`, and `kubelet` reserved for reading the kubelet
+endpoints directly, without metrics-server. See
+[decision 0009](decisions/0009-pluggable-telemetry-collector.md).
+
 **The strategies.** `dummy-random` (seeded control), `largest-cpu-capacity` (static
 capacity), `least-allocated` (requests-aware), `least-used` (telemetry-aware, the BT arm of
 the protocol). A strategy is a pure function of the snapshot: no cluster call, no state, no

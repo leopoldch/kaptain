@@ -31,15 +31,16 @@ if os.getenv("KAPTAIN_REQUESTS_SOURCE", "none") == "api":
     requests_source.start()
     available = available | {FEATURE_REQUESTED}
 
-# Measured usage, the feature both paths were missing. Needed by least-used (the BT arm).
-if os.getenv("KAPTAIN_TELEMETRY", "off") == "metrics-api":
-    from telemetry import MetricsApiTelemetry
+# Measured usage, needed by least-used (the BT arm). The collector is selectable and named,
+# so a run records which one produced the numbers; see telemetry.open_source.
+from telemetry import DISABLED as TELEMETRY_OFF, open_source
 
-    telemetry_source = MetricsApiTelemetry(
-        refresh_seconds=float(os.getenv("KAPTAIN_TELEMETRY_REFRESH", "2")),
-        max_age_seconds=float(os.getenv("KAPTAIN_TELEMETRY_MAX_AGE", "30")),
-    )
-    telemetry_source.start()
+telemetry_source = open_source(
+    os.getenv("KAPTAIN_TELEMETRY", TELEMETRY_OFF),
+    refresh_seconds=float(os.getenv("KAPTAIN_TELEMETRY_REFRESH", "2")),
+    max_age_seconds=float(os.getenv("KAPTAIN_TELEMETRY_MAX_AGE", "30")),
+)
+if telemetry_source is not None:
     available = available | {FEATURE_TELEMETRY}
 
 # Fail fast rather than produce a run made only of fallbacks.
@@ -63,6 +64,7 @@ def healthz():
         "strategy": strategy.name,
         "integration": INTEGRATION,
         "features": sorted(available),
+        "telemetry_collector": getattr(telemetry_source, "name", TELEMETRY_OFF),
     }
 
 

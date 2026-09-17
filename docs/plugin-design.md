@@ -121,9 +121,15 @@ candidate list. The rule and its rationale are in
 
 ## Observability constraints
 
-The plugin must not query Prometheus inside `Score`. It reads a cache refreshed in the
-background, and carries the age of each measurement into the snapshot — the age of the
-*measurement*, taken from the metrics API's own timestamp, not of the download.
+The plugin must not query Prometheus or the kubelet inside `Score`. It reads a cache
+refreshed in the background, and carries the age of each measurement into the snapshot — the
+age of the *measurement*, taken from the source's own timestamp, not of the download.
+
+Which collector fills that cache is configuration, not code: `metrics-api` today, `kubelet`
+reserved for a direct collector that would remove metrics-server from the path. The
+collector names itself, and that name reaches the startup line and the `source` label of
+`cache_age_seconds`, so a result records where its numbers came from. See
+[decision 0009](decisions/0009-pluggable-telemetry-collector.md).
 
 Native scheduler metrics serve as the control: scheduling algorithm duration, extension point
 durations, pending pods, attempts and errors. Ours add what Kubernetes cannot know: policy

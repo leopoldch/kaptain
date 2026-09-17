@@ -70,11 +70,15 @@ func New(ctx context.Context, _ runtime.Object, handle framework.Handle) (framew
 		reservations: newReservations(config.ReservationTTL),
 	}
 
-	if config.Telemetry {
+	if config.Telemetry != telemetry.Disabled {
 		if handle == nil {
-			return nil, fmt.Errorf("KAPTAIN_TELEMETRY=metrics-api needs a scheduler handle")
+			return nil, fmt.Errorf("telemetry collector %q needs a scheduler handle", config.Telemetry)
 		}
-		source, err := telemetry.New(ctx, handle.KubeConfig(), config.TelemetryEvery, config.TelemetryMaxAge)
+		source, err := telemetry.Open(ctx, config.Telemetry, telemetry.Options{
+			Config:   handle.KubeConfig(),
+			Interval: config.TelemetryEvery,
+			MaxAge:   config.TelemetryMaxAge,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("telemetry: %w", err)
 		}
@@ -82,20 +86,28 @@ func New(ctx context.Context, _ runtime.Object, handle framework.Handle) (framew
 	}
 
 	if missing := strategies.MissingFeatures(strategy, plugin.features()); len(missing) > 0 {
-		return nil, fmt.Errorf("strategy %q needs %v; set KAPTAIN_TELEMETRY=metrics-api", strategy.Name(), missing)
+		return nil, fmt.Errorf("strategy %q needs %v; set KAPTAIN_TELEMETRY=%s", strategy.Name(), missing, telemetry.MetricsAPI)
 	}
 	if config.DeciderURL != "" {
 		plugin.decider = decider.New(config.DeciderURL, config.DeciderTimeout)
 	}
 	klog.InfoS("kaptain plugin ready", "strategy", config.Strategy, "decider", plugin.deciderName(),
 		"deciderTimeout", config.DeciderTimeout, "runID", config.RunID, "policyVersion", config.PolicyVersion,
-		"features", plugin.features())
+		"features", plugin.features(), "telemetryCollector", plugin.telemetryName())
 	return plugin, nil
 }
 
 func (p *Plugin) Name() string { return Name }
 
 func (p *Plugin) strategyName() string { return p.strategy.Name() }
+
+// telemetryName is the collector actually in use, recorded with every run.
+func (p *Plugin) telemetryName() string {
+	if p.telemetry == nil {
+		return telemetry.Disabled
+	}
+	return p.telemetry.Name()
+}
 
 // features says what this deployment can actually put in a snapshot. The extender exposes
 // the same list at /healthz, so a run can record what each path could see.
@@ -133,7 +145,7 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 	candidateNodes.WithLabelValues(strategy).Observe(float64(len(current.Nodes)))
 	for _, node := range current.Nodes {
 		if node.MetricsAgeSeconds > 0 {
-			cacheAgeSeconds.WithLabelValues(snapshot.FeatureTelemetry).Observe(node.MetricsAgeSeconds)
+			cacheAgeSeconds.WithLabelValues(p.telemetryName()).Observe(node.MetricsAgeSeconds)
 		}
 	}
 

@@ -26,9 +26,11 @@ spec:
               value: "api"
             - name: KAPTAIN_REQUESTS_REFRESH
               value: "2"
-            # Measured node usage, needed by least-used. Requires metrics-server.
+            # Measured node usage, needed by least-used. Collectors: off, metrics-api
+            # (requires metrics-server), kubelet (reserved, not implemented). An unknown or
+            # unimplemented collector is refused at startup rather than silently ignored.
             - name: KAPTAIN_TELEMETRY
-              value: "off"           # or "metrics-api"
+              value: "off"
             - name: KAPTAIN_TELEMETRY_REFRESH
               value: "2"
             - name: KAPTAIN_SEED

@@ -314,3 +314,21 @@ def test_refresh_releases_a_reservation_when_the_pod_lands_elsewhere():
 
     assert source.get("w1")["millicpu"] == 0
     assert source.get("w2")["millicpu"] == 500
+
+
+def test_open_source_selects_the_collector():
+    import pytest as _pytest
+
+    from telemetry import DISABLED, KUBELET, METRICS_API, MetricsApiTelemetry, open_source
+
+    assert open_source("") is None
+    assert open_source(DISABLED) is None
+
+    # Reserved, and refused explicitly rather than silently falling back to metrics-server.
+    with _pytest.raises(NotImplementedError):
+        open_source(KUBELET)
+
+    with _pytest.raises(ValueError):
+        open_source("prometheus")
+
+    assert MetricsApiTelemetry.name == METRICS_API

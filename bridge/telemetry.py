@@ -1,4 +1,4 @@
-"""Measured node usage, read from the Kubernetes metrics API.
+"""Measured node usage.
 
 Requested resources say what pods asked for, not what is being used. The BT arm of the
 protocol needs the measured value, and so does any comparison claiming that a model beats
@@ -6,6 +6,12 @@ a heuristic *given the same observations*.
 
 Same contract as the Go plugin's `pkg/telemetry`: a background refresh, a decision that
 never calls the API, and an age carried with every sample so a stale value is visible.
+
+The collector is replaceable, and both integrations name the same ones. Today the path is
+``kubelet -> metrics-server -> metrics.k8s.io -> this cache``; a direct kubelet collector
+would remove the intermediate dependency and lower staleness. Nothing above this module has
+to change when that happens: `open_source` picks the collector, and the collector names
+itself so a run records which one produced the numbers.
 """
 
 import logging
@@ -19,6 +25,31 @@ log = logging.getLogger("kaptain.telemetry")
 
 METRICS_GROUP = "metrics.k8s.io"
 METRICS_VERSION = "v1beta1"
+
+# Collectors. KUBELET is reserved: naming it here keeps the two integrations symmetric and
+# makes the comparison possible later without touching the strategies.
+DISABLED = "off"
+METRICS_API = "metrics-api"
+KUBELET = "kubelet"
+
+
+def open_source(collector: str, refresh_seconds: float = 2.0, max_age_seconds: float = 30.0):
+    """Return the configured collector, started, or None for no telemetry at all."""
+    if collector in ("", DISABLED):
+        return None
+    if collector == METRICS_API:
+        source = MetricsApiTelemetry(refresh_seconds, max_age_seconds)
+        source.start()
+        return source
+    if collector == KUBELET:
+        raise NotImplementedError(
+            f"telemetry collector {collector!r} is not implemented yet; it is reserved for "
+            "reading the kubelet summary endpoints directly, without metrics-server"
+        )
+    raise ValueError(
+        f"unknown telemetry collector {collector!r}, known: {DISABLED}, {METRICS_API} "
+        f"({KUBELET} reserved)"
+    )
 
 
 def parse_node_metrics(items: list[dict]) -> dict[str, dict]:
@@ -58,6 +89,8 @@ def parse_timestamp(value: str | None) -> float | None:
 
 
 class MetricsApiTelemetry:
+    name = METRICS_API
+
     def __init__(self, refresh_seconds: float = 2.0, max_age_seconds: float = 30.0):
         self.refresh_seconds = refresh_seconds
         self.max_age_seconds = max_age_seconds

@@ -1,6 +1,13 @@
 # Roadmap and open questions
 
-Ordered by what unblocks the most. The current blocking item is the experiment runner: both
+Ordered by what unblocks the most.
+
+Raised in review of PR #6 and not yet done: a **kubelet telemetry collector**, reading the
+summary and resource-metrics endpoints directly instead of going through metrics-server. The
+interface for it exists ([decision 0009](decisions/0009-pluggable-telemetry-collector.md));
+what is missing is the collector and the experiment that compares the two on staleness and on
+whether the richer data changes any decision.
+ The current blocking item is the experiment runner: both
 integrations produce comparable per-decision logs and metrics, and nothing aggregates them
 into a result yet.
 

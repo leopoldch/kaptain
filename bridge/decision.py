@@ -79,7 +79,8 @@ class Decider:
             for absent in node.get("missing", []):
                 metrics.missing_features_total.labels(absent).inc()
             if node.get("metrics_age_seconds"):
-                metrics.cache_age_seconds.labels(snap.FEATURE_TELEMETRY).observe(node["metrics_age_seconds"])
+                collector = getattr(self.telemetry, "name", snap.FEATURE_TELEMETRY)
+                metrics.cache_age_seconds.labels(collector).observe(node["metrics_age_seconds"])
 
         strategy_started = time.perf_counter()
         reason = None

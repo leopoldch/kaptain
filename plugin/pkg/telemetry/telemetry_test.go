@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -54,5 +55,31 @@ func TestClockSkewDoesNotProduceANegativeAge(t *testing.T) {
 	}
 	if usage.AgeSeconds != 0 {
 		t.Fatalf("age %.2fs, want 0", usage.AgeSeconds)
+	}
+}
+
+func TestOpenSelectsTheCollector(t *testing.T) {
+	for _, collector := range []string{"", Disabled} {
+		source, err := Open(context.Background(), collector, Options{})
+		if err != nil || source != nil {
+			t.Fatalf("Open(%q) = (%v, %v), want (nil, nil)", collector, source, err)
+		}
+	}
+
+	// Reserved, and refused explicitly rather than silently falling back to metrics-server:
+	// the point of the interface is to make this comparable later, not to pretend it exists.
+	if _, err := Open(context.Background(), Kubelet, Options{}); err == nil {
+		t.Fatal("the kubelet collector was accepted although it is not implemented")
+	}
+
+	if _, err := Open(context.Background(), "prometheus", Options{}); err == nil {
+		t.Fatal("an unknown collector was accepted")
+	}
+}
+
+func TestCollectorNamesItself(t *testing.T) {
+	c := source(time.Second, map[string]sample{})
+	if c.Name() != MetricsAPI {
+		t.Fatalf("Name() = %q, want %q", c.Name(), MetricsAPI)
 	}
 }

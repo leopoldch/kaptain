@@ -4,6 +4,8 @@ import (
 	"os"
 	"strconv"
 	"time"
+
+	"github.com/leopoldch/kaptain/plugin/pkg/telemetry"
 )
 
 // Config comes from the environment, exactly like the Python extender, so switching a run
@@ -14,7 +16,7 @@ type Config struct {
 	DeciderURL      string
 	DeciderTimeout  time.Duration
 	ReservationTTL  time.Duration
-	Telemetry       bool
+	Telemetry       string
 	TelemetryEvery  time.Duration
 	TelemetryMaxAge time.Duration
 	RunID           string
@@ -37,7 +39,7 @@ func configFromEnv() Config {
 		DeciderURL:      env("KAPTAIN_DECIDER_URL", ""),
 		DeciderTimeout:  envDuration("KAPTAIN_DECIDER_TIMEOUT", defaultDeciderTimeout),
 		ReservationTTL:  envDuration("KAPTAIN_RESERVATION_TTL", defaultReservationTTL),
-		Telemetry:       env("KAPTAIN_TELEMETRY", "off") == "metrics-api",
+		Telemetry:       env("KAPTAIN_TELEMETRY", telemetry.Disabled),
 		TelemetryEvery:  envDuration("KAPTAIN_TELEMETRY_REFRESH", defaultTelemetryEvery),
 		TelemetryMaxAge: envDuration("KAPTAIN_TELEMETRY_MAX_AGE", defaultTelemetryMaxAge),
 		RunID:           env("RUN_ID", unset),

@@ -60,6 +60,8 @@ func (f fakeTelemetry) Get(node string) (telemetry.Usage, bool) {
 	return usage, ok
 }
 
+func (f fakeTelemetry) Name() string { return "fake" }
+
 func TestSnapshotCarriesMeasuredUsageWhenAvailable(t *testing.T) {
 	p := &Plugin{
 		config:       Config{ReservationTTL: time.Minute},

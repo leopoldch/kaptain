@@ -37,9 +37,11 @@ spec:
             #   value: "http://kaptain-decider.kube-system.svc.cluster.local:8889/decide"
             - name: KAPTAIN_DECIDER_TIMEOUT
               value: "50ms"
-            # Measured node usage, needed by least-used. Requires metrics-server.
+            # Measured node usage, needed by least-used. Collectors: off, metrics-api
+            # (requires metrics-server), kubelet (reserved, not implemented). An unknown or
+            # unimplemented collector is refused at startup rather than silently ignored.
             - name: KAPTAIN_TELEMETRY
-              value: "off"           # or "metrics-api"
+              value: "off"
             - name: KAPTAIN_TELEMETRY_REFRESH
               value: "2"
             - name: RUN_ID
