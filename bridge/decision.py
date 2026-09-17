@@ -44,6 +44,8 @@ class Decision:
     requests_age_ms: float
     duration_ms: float
     snapshot_duration_ms: float = 0.0
+    reserved: bool = False
+    reserved_reason: str | None = None
     strategy_duration_ms: float = 0.0
     normalize_duration_ms: float = 0.0
     fallback_reason: str | None = None
@@ -123,14 +125,31 @@ class Decider:
             normalize_duration_ms=normalize_ms,
             fallback_reason=reason,
         )
-        reserve = getattr(self.requests, "reserve", None)
-        if reserve is not None:
-            reserve(current["pod"]["uid"], decision.node,
-                    current["pod"]["requested_millicpu"],
-                    current["pod"]["requested_memory_bytes"])
+        self._reserve(current, decision)
 
         self._record(current, decision)
         return decision
+
+    def _reserve(self, current: dict, decision: Decision) -> None:
+        """Hold the pod's requests against the chosen node, but only when we know it.
+
+        The extender scores; the scheduler places. When several nodes come out with the same
+        normalised score, Kubernetes picks among them at random, so the node we preferred is
+        not necessarily the node the pod lands on. Reserving it anyway would charge a load to
+        a node that never received the pod, and the next decisions would run on a fiction.
+        In that case we reserve nothing and say so: the next refresh will show the truth.
+        """
+        reserve = getattr(self.requests, "reserve", None)
+        if reserve is None:
+            return
+        if decision.tie_count > 1:
+            decision.reserved_reason = "tie"
+            _count("reservation_skipped_total:tie")
+            return
+        reserve(current["pod"]["uid"], decision.node,
+                current["pod"]["requested_millicpu"],
+                current["pod"]["requested_memory_bytes"])
+        decision.reserved = True
 
     def _record(self, current: dict, decision: Decision) -> None:
         _count("decisions_total")
@@ -158,6 +177,8 @@ class Decider:
             "fallback": decision.fallback,
             "fallback_reason": decision.fallback_reason,
             "fallback_strategy": FALLBACK_NAME if decision.fallback else None,
+            "reserved": decision.reserved,
+            "reserved_skipped_reason": decision.reserved_reason,
             "duration_ms": round(decision.duration_ms, 3),
             "durations_ms": {
                 "snapshot": round(decision.snapshot_duration_ms, 3),

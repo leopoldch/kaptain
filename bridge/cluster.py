@@ -20,6 +20,16 @@ TERMINAL_PHASES = frozenset({"Succeeded", "Failed"})
 log = logging.getLogger("kaptain.cluster")
 
 
+def observed_uids(pods: list[dict]) -> set[str]:
+    """UIDs of the pods the API already accounts for, bound or not.
+
+    Reconciliation has to go by identity. Dropping a reservation because a refresh started
+    after it was taken is wrong: a pod can still be waiting for its binding, and the node
+    would then look free again until the pod finally appears.
+    """
+    return {pod["uid"] for pod in pods if pod.get("uid")}
+
+
 def aggregate(pods: list[dict]) -> dict[str, dict]:
     """Sum the effective requests of the pods bound to each node.
 
@@ -85,17 +95,19 @@ class ApiRequestsSource(RequestsSource):
                 log.warning("requests refresh failed: %s", exc)
 
     def refresh(self) -> None:
-        started = time.monotonic()
         listed = self._api.list_pod_for_all_namespaces(
             field_selector="status.phase!=Succeeded,status.phase!=Failed"
         )
-        totals = aggregate([_as_dict(pod) for pod in listed.items])
+        pods = [_as_dict(pod) for pod in listed.items]
+        totals = aggregate(pods)
+        seen = observed_uids(pods)
         with self._lock:
             self._totals = totals
             self._updated_at = time.monotonic()
-            # Anything decided before this listing began is either visible in it or gone.
+            # Release a reservation only once the API accounts for that exact pod. The TTL
+            # in get() is the backstop for a pod that never appears at all.
             self._inflight = {
-                uid: entry for uid, entry in self._inflight.items() if entry["at"] > started
+                uid: entry for uid, entry in self._inflight.items() if uid not in seen
             }
 
     def reserve(self, uid: str, node: str, millicpu: int, memory_bytes: int) -> None:
@@ -133,6 +145,7 @@ class ApiRequestsSource(RequestsSource):
 def _as_dict(pod) -> dict:
     """Reduce an API pod object to the Kubernetes-shaped spec `aggregate` expects."""
     return {
+        "uid": pod.metadata.uid,
         "node": pod.spec.node_name,
         "phase": pod.status.phase,
         "spec": {

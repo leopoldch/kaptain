@@ -6,7 +6,7 @@ K8S_VERSION  := v1.31.0
 .PHONY: up build load deploy demo logs verify down all \
         build-plugin load-plugin deploy-plugin demo-plugin logs-plugin verify-plugin \
         metrics-plugin metrics-extender demo-default test test-extender test-plugin \
-        fmt-plugin lint-manifests \
+        fmt-plugin lint-manifests quantities \
         replay-plugin replay-extender all-plugin
 
 # --- Cluster -----------------------------------------------------------------
@@ -123,6 +123,10 @@ test-plugin:
 
 fmt-plugin:
 	cd plugin && gofmt -w .
+
+# Regenerate the reference quantity conversions from apimachinery.
+quantities:
+	cd plugin && go run ./hack/qcheck
 
 # Parse every manifest with the Kubernetes YAML decoder (no cluster needed).
 lint-manifests:
