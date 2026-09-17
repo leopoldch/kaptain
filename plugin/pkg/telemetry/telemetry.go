@@ -21,11 +21,19 @@ import (
 	metricsclient "k8s.io/metrics/pkg/client/clientset/versioned"
 )
 
-// Usage is one node's measured consumption, with the age of the measurement.
+// Usage is one node's measured consumption, with the age of the measurement itself.
 type Usage struct {
 	MilliCPU    int64
 	MemoryBytes int64
 	AgeSeconds  float64
+}
+
+// sample is what the refresh stores: the values plus the instant the metrics source says
+// they were measured, which is not the instant we downloaded them.
+type sample struct {
+	milliCPU    int64
+	memoryBytes int64
+	measuredAt  time.Time
 }
 
 // Source is what a strategy sees. A nil Source means no telemetry at all, which the
@@ -40,7 +48,7 @@ type client struct {
 	maxAge   time.Duration
 
 	mutex     sync.RWMutex
-	usage     map[string]Usage
+	samples   map[string]sample
 	updatedAt time.Time
 }
 
@@ -52,7 +60,7 @@ func New(ctx context.Context, config *restclient.Config, interval, maxAge time.D
 	if err != nil {
 		return nil, err
 	}
-	source := &client{api: api, interval: interval, maxAge: maxAge, usage: map[string]Usage{}}
+	source := &client{api: api, interval: interval, maxAge: maxAge, samples: map[string]sample{}}
 	if err := source.refresh(ctx); err != nil {
 		klog.ErrorS(err, "kaptain telemetry: first refresh failed, starting without a sample")
 	}
@@ -80,32 +88,45 @@ func (c *client) refresh(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	usage := make(map[string]Usage, len(listed.Items))
+	samples := make(map[string]sample, len(listed.Items))
 	for _, item := range listed.Items {
 		cpu := item.Usage[v1.ResourceCPU]
 		memory := item.Usage[v1.ResourceMemory]
-		usage[item.Name] = Usage{MilliCPU: cpu.MilliValue(), MemoryBytes: memory.Value()}
+		samples[item.Name] = sample{
+			milliCPU:    cpu.MilliValue(),
+			memoryBytes: memory.Value(),
+			// The API reports when the sample was taken. metrics-server serves a cached
+			// measurement, so dating it from this download would make a stale value look
+			// fresh and let a strategy rank on old numbers.
+			measuredAt: item.Timestamp.Time,
+		}
 	}
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	c.usage, c.updatedAt = usage, time.Now()
+	c.samples, c.updatedAt = samples, time.Now()
 	return nil
 }
 
+// Get returns the node's usage and the age of that measurement. A sample without a usable
+// timestamp is refused: an age that cannot be known cannot be checked against the limit.
 func (c *client) Get(node string) (Usage, bool) {
 	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-	if c.updatedAt.IsZero() {
+	entry, ok := c.samples[node]
+	c.mutex.RUnlock()
+	if !ok || entry.measuredAt.IsZero() {
 		return Usage{}, false
 	}
-	age := time.Since(c.updatedAt)
+
+	age := time.Since(entry.measuredAt)
+	if age < 0 {
+		age = 0 // clock skew between us and the metrics source
+	}
 	if age > c.maxAge {
 		return Usage{}, false
 	}
-	entry, ok := c.usage[node]
-	if !ok {
-		return Usage{}, false
-	}
-	entry.AgeSeconds = age.Seconds()
-	return entry, true
+	return Usage{
+		MilliCPU:    entry.milliCPU,
+		MemoryBytes: entry.memoryBytes,
+		AgeSeconds:  age.Seconds(),
+	}, true
 }

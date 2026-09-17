@@ -112,15 +112,23 @@ does not fix that — it only makes it visible. Two consequences:
   and it is exactly what the plugin exists to remove.
 - in cluster, report the freshness difference rather than assume it away: each extender
   decision logs `requests_age_ms`, which is 0 in the plugin because the scheduler cache is
-  current. The extender also holds its own in-flight decisions until the API refresh
-  **observes that exact pod** (by UID, not by timestamp — a pod can still be waiting for its
-  binding), with a TTL as the backstop for a pod that never appears.
+  current. The extender holds its own in-flight decisions until the API refresh observes
+  that exact pod **on a node**. Neither weaker rule works: releasing by timestamp, or as
+  soon as the pod exists in the API, both free the node while the pod is still Pending. The
+  TTL is only the backstop for a pod that never gets placed.
 - one thing the extender cannot hold at all: a placement it only guessed. It scores, the
   scheduler places, and on a tie Kubernetes picks among the top nodes at random — so when
   `tie_count > 1` the extender reserves nothing and logs `reserved: false` with
   `reserved_skipped_reason: "tie"`, rather than charging a load to a node that may never
   receive the pod. The plugin has no such problem: its `Reserve` is called by the framework
   with the node actually selected.
+
+**Telemetry age.** `metrics_age_seconds` is the age of the **measurement**, taken from the
+per-node `timestamp` the metrics API sends, not from the moment we downloaded it.
+metrics-server serves a cached sample, so dating it from the fetch would let a strategy rank
+on minutes-old numbers while reporting an age of milliseconds. `KAPTAIN_TELEMETRY_MAX_AGE`
+applies per node against that timestamp, and a sample with no usable timestamp is refused
+outright: an age that cannot be known cannot be checked.
 
 **Resource quantities.** Both paths parse quantities the way Kubernetes does, rounding
 towards +infinity: `123456789n`, which is how the metrics API reports CPU, is **124**

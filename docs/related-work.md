@@ -4,7 +4,7 @@ Structured literature review for IFT-7026 (Université Laval, supervisor: Prof. 
 Aymen Saied). Covers the 7 research papers and the survey in the project folder, plus adjacent work
 found online.
 
-Merged from two independent reading passes (Claude + Codex). Where the two passes disagree
+Merged from two independent reading passes over the corpus. Where the two passes disagree
 on a number, both are recorded under **Contested** rather than silently resolved.
 
 For each paper: what is new, what it actually measures, what it does *not* establish, and
@@ -1719,6 +1719,17 @@ and are recorded here as resolved, because they change how results must be read.
   the documentation: replay measures the policy computation, not the transport, so it pins
   parity and inference cost but cannot measure integration overhead — that comes from
   kube-scheduler's own extension-point metrics, in cluster.
+
+- **Fifth review round (2026-09-17).** Two bugs, both in code added the same day. The
+  reservation release still fired too early: it keyed on the pod merely existing in the API,
+  but a pod exists from creation and sits Pending until its binding, so a reserved node went
+  back to looking free. Release now requires observing that pod **on a node**, with the TTL
+  as the only backstop, and `refresh()` itself is tested with a Pending pod, a pod that lands
+  where expected, and one that lands elsewhere. Second, the telemetry age measured the
+  download rather than the measurement, in both languages: metrics-server serves a cached
+  sample, so a fresh fetch of a five-minute-old value looked fresh. Both now use the
+  per-node `timestamp` from the API, refuse a sample without one, and clamp negative ages
+  from clock skew.
 
 ### Open
 

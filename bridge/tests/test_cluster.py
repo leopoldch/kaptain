@@ -1,7 +1,8 @@
 import time
+from types import SimpleNamespace
 
 import cluster
-from cluster import ApiRequestsSource, aggregate
+from cluster import ApiRequestsSource, aggregate, placed_uids
 
 
 def pod(node, phase="Running", cpu="500m", memory="256Mi", init=None):
@@ -83,14 +84,17 @@ def test_node_metrics_are_parsed_into_millicores_and_bytes():
     from telemetry import parse_node_metrics
 
     usage = parse_node_metrics([
-        {"metadata": {"name": "w1"}, "usage": {"cpu": "250m", "memory": "1000Ki"}},
-        {"metadata": {"name": "w2"}, "usage": {"cpu": "1500m", "memory": "2Gi"}},
+        {"metadata": {"name": "w1"}, "timestamp": "2026-09-17T12:00:00Z",
+         "usage": {"cpu": "250m", "memory": "1000Ki"}},
+        {"metadata": {"name": "w2"}, "timestamp": "2026-09-17T12:00:00Z",
+         "usage": {"cpu": "1500m", "memory": "2Gi"}},
         {"usage": {"cpu": "1"}},
     ])
-    assert usage == {
-        "w1": {"millicpu": 250, "memory_bytes": 1024000},
-        "w2": {"millicpu": 1500, "memory_bytes": 2147483648},
-    }
+    assert set(usage) == {"w1", "w2"}
+    assert usage["w1"]["millicpu"] == 250
+    assert usage["w1"]["memory_bytes"] == 1024000
+    assert usage["w2"]["millicpu"] == 1500
+    assert usage["w2"]["memory_bytes"] == 2147483648
 
 
 def test_telemetry_reports_nothing_before_the_first_refresh():
@@ -99,19 +103,36 @@ def test_telemetry_reports_nothing_before_the_first_refresh():
     assert MetricsApiTelemetry().get("w1") is None
 
 
-def test_stale_telemetry_is_refused(monkeypatch):
+def test_telemetry_age_comes_from_the_measurement_not_the_download(monkeypatch):
+    """metrics-server serves a cached sample: a fresh fetch of an old measurement is old."""
     import telemetry as telemetry_module
     from telemetry import MetricsApiTelemetry
 
     source = MetricsApiTelemetry(max_age_seconds=5)
-    monkeypatch.setattr(telemetry_module.time, "monotonic", lambda: 100.0)
-    source._usage = {"w1": {"millicpu": 100, "memory_bytes": 128}}
-    source._updated_at = 80.0
-    assert source.get("w1") is None
+    monkeypatch.setattr(telemetry_module.time, "time", lambda: 1000.0)
+    source._updated_at = 1000.0  # downloaded just now
+    source._usage = {
+        "fresh": {"millicpu": 100, "memory_bytes": 128, "measured_at": 998.0},
+        "stale": {"millicpu": 100, "memory_bytes": 128, "measured_at": 900.0},
+        "undated": {"millicpu": 100, "memory_bytes": 128, "measured_at": None},
+    }
 
-    source._updated_at = 98.0
-    assert source.get("w1")["age_seconds"] == 2.0
+    assert source.get("fresh")["age_seconds"] == 2.0
+    assert source.get("stale") is None
+    assert source.get("undated") is None
     assert source.get("unknown") is None
+
+
+def test_telemetry_timestamp_is_parsed_from_the_payload():
+    from telemetry import parse_node_metrics
+
+    usage = parse_node_metrics([
+        {"metadata": {"name": "w1"}, "timestamp": "2026-09-17T12:00:00Z",
+         "usage": {"cpu": "123456789n", "memory": "1000Ki"}},
+        {"metadata": {"name": "w2"}, "usage": {"cpu": "1", "memory": "1Gi"}},
+    ])
+    assert usage["w1"]["measured_at"] == 1789646400.0
+    assert usage["w2"]["measured_at"] is None
 
 
 def test_snapshot_marks_telemetry_present_only_when_measured():
@@ -182,9 +203,11 @@ def test_nanocores_from_the_metrics_api_are_accepted():
     from telemetry import parse_node_metrics
 
     usage = parse_node_metrics([
-        {"metadata": {"name": "w1"}, "usage": {"cpu": "123456789n", "memory": "1000Ki"}},
+        {"metadata": {"name": "w1"}, "timestamp": "2026-09-17T12:00:00Z",
+         "usage": {"cpu": "123456789n", "memory": "1000Ki"}},
     ])
-    assert usage == {"w1": {"millicpu": 124, "memory_bytes": 1024000}}
+    assert usage["w1"]["millicpu"] == 124
+    assert usage["w1"]["memory_bytes"] == 1024000
 
 
 def test_reservation_is_skipped_when_the_placement_is_a_guess():
@@ -225,20 +248,69 @@ def test_reservation_is_skipped_when_the_placement_is_a_guess():
     assert recorder.reserved == [("u", "big")]
 
 
-def test_reservation_survives_a_refresh_until_the_pod_is_observed():
-    from cluster import ApiRequestsSource, observed_uids
+def api_pod(uid, node, cpu="500m", memory="256Mi", phase="Running"):
+    """An object shaped like the API client's pod, for refresh() to consume."""
+    container = SimpleNamespace(
+        resources=SimpleNamespace(requests={"cpu": cpu, "memory": memory}),
+        restart_policy=None,
+    )
+    return SimpleNamespace(
+        metadata=SimpleNamespace(uid=uid),
+        spec=SimpleNamespace(node_name=node, containers=[container], init_containers=None, overhead=None),
+        status=SimpleNamespace(phase=phase),
+    )
 
+
+class FakeApi:
+    def __init__(self, pods):
+        self.pods = pods
+
+    def list_pod_for_all_namespaces(self, field_selector=None):
+        return SimpleNamespace(items=self.pods)
+
+
+def test_only_a_placed_pod_releases_its_reservation():
+    """A pod exists in the API from creation and sits Pending until its binding lands."""
+    assert placed_uids([{"uid": "pending", "node": None}]) == set()
+    assert placed_uids([{"uid": "bound", "node": "w1"}]) == {"bound"}
+    assert placed_uids([{"node": "w1"}]) == set()
+
+
+def test_refresh_keeps_the_reservation_of_a_still_pending_pod():
     source = ApiRequestsSource()
-    source._updated_at = time.monotonic()
+    source._api = FakeApi([api_pod("pending-uid", None)])
     source.reserve("pending-uid", "w1", 500, 1024)
 
-    # A refresh that does not yet see the pod must keep the reservation.
-    source._totals = {}
-    seen = observed_uids([{"uid": "someone-else", "node": "w1"}])
-    source._inflight = {uid: e for uid, e in source._inflight.items() if uid not in seen}
-    assert source.get("w1")["millicpu"] == 500
+    source.refresh()
 
-    # Once the pod is accounted for, the reservation goes.
-    seen = observed_uids([{"uid": "pending-uid", "node": "w1"}])
-    source._inflight = {uid: e for uid, e in source._inflight.items() if uid not in seen}
+    # The pod is in the API but has no node yet, so it is in no node's totals: dropping the
+    # reservation here would make w1 look free again.
+    assert source.get("w1")["millicpu"] == 500
+    assert "pending-uid" in source._inflight
+
+
+def test_refresh_releases_the_reservation_once_the_pod_is_placed():
+    source = ApiRequestsSource()
+    source._api = FakeApi([api_pod("pending-uid", None)])
+    source.reserve("pending-uid", "w1", 500, 1024)
+    source.refresh()
+
+    source._api = FakeApi([api_pod("pending-uid", "w1")])
+    source.refresh()
+
+    # Now the pod is counted in the totals, once, and not twice.
+    assert source.get("w1")["millicpu"] == 500
+    assert source._inflight == {}
+
+
+def test_refresh_releases_a_reservation_when_the_pod_lands_elsewhere():
+    source = ApiRequestsSource()
+    source._api = FakeApi([api_pod("pod-uid", None)])
+    source.reserve("pod-uid", "w1", 500, 1024)
+    source.refresh()
+
+    source._api = FakeApi([api_pod("pod-uid", "w2")])
+    source.refresh()
+
     assert source.get("w1")["millicpu"] == 0
+    assert source.get("w2")["millicpu"] == 500

@@ -20,14 +20,17 @@ TERMINAL_PHASES = frozenset({"Succeeded", "Failed"})
 log = logging.getLogger("kaptain.cluster")
 
 
-def observed_uids(pods: list[dict]) -> set[str]:
-    """UIDs of the pods the API already accounts for, bound or not.
+def placed_uids(pods: list[dict]) -> set[str]:
+    """UIDs of the pods the API reports as **placed**, that is with a node assigned.
 
-    Reconciliation has to go by identity. Dropping a reservation because a refresh started
-    after it was taken is wrong: a pod can still be waiting for its binding, and the node
-    would then look free again until the pod finally appears.
+    A reservation may only be released against an observed placement. Two weaker rules were
+    wrong and both made a reserved node look free again too early: releasing by timestamp
+    (a refresh that merely started after the decision), and releasing as soon as the pod
+    exists in the API — a pod exists from the moment it is created, and sits Pending until
+    the binding lands. Whatever is neither placed nor cancelled is held until the TTL in
+    `get()`, which is the backstop for a pod that never gets placed at all.
     """
-    return {pod["uid"] for pod in pods if pod.get("uid")}
+    return {pod["uid"] for pod in pods if pod.get("uid") and pod.get("node")}
 
 
 def aggregate(pods: list[dict]) -> dict[str, dict]:
@@ -100,14 +103,14 @@ class ApiRequestsSource(RequestsSource):
         )
         pods = [_as_dict(pod) for pod in listed.items]
         totals = aggregate(pods)
-        seen = observed_uids(pods)
+        placed = placed_uids(pods)
         with self._lock:
             self._totals = totals
             self._updated_at = time.monotonic()
-            # Release a reservation only once the API accounts for that exact pod. The TTL
-            # in get() is the backstop for a pod that never appears at all.
+            # Release a reservation only once that exact pod is observed on a node, where
+            # `totals` now accounts for it. A Pending pod keeps its reservation.
             self._inflight = {
-                uid: entry for uid, entry in self._inflight.items() if uid not in seen
+                uid: entry for uid, entry in self._inflight.items() if uid not in placed
             }
 
     def reserve(self, uid: str, node: str, millicpu: int, memory_bytes: int) -> None:
