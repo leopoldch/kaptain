@@ -203,36 +203,60 @@ print as `<1.0ms` and only the mean is usable, exactly as anticipated.
 
 ## Result, scenario A (light pods, no background load), 17 September 2026
 
-Ten paired runs, 60 pods per run, `dummy-random` on both arms, kind with 3 workers,
-Kubernetes v1.31.0. **20 runs, 0 aborted, 10 usable pairs.**
+Ten paired runs per configuration, 60 pods per run, `dummy-random` on both arms, kind with
+3 workers, Kubernetes v1.31.0. **40 runs, 0 aborted, 20 usable pairs.**
+
+The scenario was run twice, because the first configuration was measuring a cost we had
+inflicted on ourselves. Our `/filter` handler is a pass-through — admissibility stays
+Kubernetes' job in both integrations — but the profile declared `filterVerb`, so
+kube-scheduler paid **a second HTTP round trip per pod** for an answer that never changed
+anything. Measured in the logs: 610 `/filter` calls for 610 `/prioritize` calls. Removing the
+verb is the configuration the extender should have had all along.
+
+| Configuration | extender | plugin | paired difference |
+|---|---|---|---|
+| `A-light` — two round trips per pod (`filterVerb` declared) | 5.60 ms | 0.44 ms | **5.16 ms** [4.84, 5.48] |
+| `A-lean` — one round trip per pod | 3.20 ms | 0.41 ms | **2.79 ms** [2.52, 3.06] |
+
+**`A-lean` is the result to cite**: extender at its best against the plugin. `A-light` is kept
+because the gap between the two rows is worth a sentence of its own — a single superfluous
+extender verb cost **2.4 ms per pod**, comparable to the entire remaining transport.
+
+### A-lean in detail
 
 | | extender | plugin |
 |---|---|---|
-| `scheduling_algorithm_duration_seconds`, mean | **5.60 ms** | **0.44 ms** |
-| `scheduling_attempt_duration_seconds` (+ binding), mean | 8.83 ms | 3.75 ms |
-| `pod_scheduling_sli_duration_seconds`, mean | 8.9 ms | 3.8 ms |
-| Our own decision time (excludes transport) | 0.225 ms | 0.093 ms |
+| `scheduling_algorithm_duration_seconds`, mean | **3.20 ms** | **0.41 ms** |
+| `scheduling_attempt_duration_seconds` (+ binding), mean | 6.40 ms | 3.58 ms |
+| `pod_scheduling_sli_duration_seconds`, mean | 6.5 ms | 3.6 ms |
+| Our own decision time (excludes transport) | 0.218 ms | 0.089 ms |
 | Decisions per run | 60 | 60 |
 | Fallbacks, invalid decisions | 0 | 0 |
 | Share of observations in the first 1 ms bucket | 0 % | 97 % |
 
-**Paired difference on the primary metric: 5.16 ms [4.84, 5.48] at 95 %**, over ten pairs.
-Individual differences ranged from 4.09 ms to 5.80 ms; every pair went the same way.
+**Paired difference on the primary metric: 2.79 ms [2.52, 3.06] at 95 %**, over ten pairs, and
+every pair went the same way. In `A-light` the same figure was 5.16 ms [4.84, 5.48].
 
 Two checks that make the number mean what it says:
 
-- **600 of 600 tasks were placed on the same node by both arms.** The policy really was held
-  equal, on real pods, across the whole pilot — not only in the fixtures.
+- **600 of 600 tasks were placed on the same node by both arms**, in each configuration. The
+  policy really was held equal, on real pods, across the whole pilot — not only in the
+  fixtures.
 - **600 of 600 plugin bindings matched the intended node**, with no score ties, so no
   placement was settled by the scheduler's random tie-break.
+- 1 200 decisions per configuration, zero fallbacks, zero invalid decisions.
 
 ### Reading it
 
-The gap is transport, not policy. Our own timers say the decision itself costs 0.23 ms in the
-extender and 0.09 ms in the plugin — a 0.13 ms difference — while the scheduler sees 5.16 ms.
-The remaining ~5 ms is the HTTP round trip, the JSON serialisation of the node list, and the
-scheduler-side handling of the extender call. That is exactly the quantity the plugin exists
-to remove, and it is about **12× the cost of the policy itself** at this cluster size.
+What is measured is a **difference of totals**, not the transport itself: no kube-scheduler
+metric times the extender call (`prioritizing_extender` only labels a goroutine gauge). The
+attribution comes from subtracting our own timers, which is sound but is a subtraction.
+
+Those timers say the decision itself costs 0.218 ms in the extender and 0.089 ms in the
+plugin — a 0.13 ms difference — while the scheduler sees 2.79 ms. The remaining ~2.66 ms is
+the HTTP round trip, the JSON serialisation of the node list, and the scheduler-side handling
+of the extender call: **about twenty times the cost of the policy itself** at this cluster
+size. That is exactly the quantity the plugin exists to remove.
 
 The plugin's quantiles are not reported: 97 % of its observations fall in the first 1 ms
 bucket of the native histogram, so P50/P95/P99 print as `<1.0ms` and nothing finer can be
@@ -244,9 +268,11 @@ claimed. The mean, being Δsum/Δcount, is unaffected.
   transport crosses a loopback interface, not a network. On separate VMs the absolute gap
   would change — plausibly upward — and the same protocol has to be re-run there before any
   number reaches the paper.
-- **Three candidate nodes.** The node list serialised on every extender call is tiny here.
-  The cost of that serialisation grows with the cluster, so this gap is a lower bound on what
-  a larger cluster would show.
+- **Three candidate nodes.** The node list serialised on every extender call is tiny here,
+  and `nodeCacheCapable: false` means the full node objects travel on every call. The cost of
+  that serialisation grows with the cluster, so this gap is a lower bound on what a larger
+  cluster would show — and `nodeCacheCapable: true` is the next configuration lever to test,
+  as removing `filterVerb` was.
 - **A trivial policy.** `dummy-random` costs almost nothing, which is what isolates the
   integration. It says nothing about what an ML or LLM policy would cost, and nothing about
   placement quality — the two arms placed identically by construction.

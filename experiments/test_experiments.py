@@ -224,3 +224,22 @@ def test_quantity_parsing_for_capacity_checks():
     assert collect.quantity("500m") == 0.5
     assert collect.quantity("64Mi") == 64 * 1024 ** 2
     assert collect.quantity("123456789n") == pytest.approx(0.123456789)
+
+
+def test_intervals_are_per_scenario_not_pooled():
+    """Scenarios differ on purpose; averaging them would hide the very difference the second
+    scenario was run to expose."""
+    rows = []
+    for index, (extender, plugin) in enumerate([(6.0, 0.5), (6.2, 0.5)]):
+        rows.append(row("extender", str(index), extender, scenario="A-light"))
+        rows.append(row("plugin", str(index), plugin, scenario="A-light"))
+    for index, (extender, plugin) in enumerate([(3.2, 0.4), (3.0, 0.4)]):
+        rows.append(row("extender", str(index), extender, scenario="A-lean"))
+        rows.append(row("plugin", str(index), plugin, scenario="A-lean"))
+
+    paired = analyse.pair(rows)
+    light = [p["difference_ms"] for p in paired if p["scenario"] == "A-light"]
+    lean = [p["difference_ms"] for p in paired if p["scenario"] == "A-lean"]
+
+    assert analyse.interval(light)["mean_ms"] == pytest.approx(5.6, abs=0.05)
+    assert analyse.interval(lean)["mean_ms"] == pytest.approx(2.7, abs=0.05)

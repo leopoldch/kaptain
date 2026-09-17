@@ -229,23 +229,28 @@ def main() -> int:
 
     aborted = [row for row in rows if row.get("aborted")]
     pairs = pair(rows)
-    summary = interval([p.get("difference_ms") for p in pairs if not p.get("aborted")])
 
     print(f"{len(rows)} runs, {len(aborted)} aborted -> {args.out}")
     for row in aborted:
         print(f"  aborted {row['run_id']}: {row['aborted']}")
-    incomplete = [p for p in pairs if p.get("aborted")]
-    for entry in incomplete:
+    for entry in [p for p in pairs if p.get("aborted")]:
         print(f"  unusable pair {entry.get('scenario')}/{entry.get('pair_id')}: {entry['aborted']}")
-    print(f"{summary['pairs']} usable pairs out of {len(pairs)}")
-    if summary["mean_ms"] is not None:
-        print(f"  extender - plugin, {_short(PRIMARY)} mean: "
-              f"{summary['mean_ms']} ms [{summary['low_ms']}, {summary['high_ms']}] (95%)")
-    unresolved = [p.get("extender_unresolved_share") for p in pairs
-                  if p.get("extender_unresolved_share")]
-    if unresolved and max(unresolved) > 0.5:
-        print("  note: over half the observations fall in the first 1 ms bucket; "
-              "the mean is usable, the quantiles are not")
+
+    # One interval per scenario. Pooling them would average configurations that differ on
+    # purpose -- the whole point of running a second scenario is that it is not the first.
+    for scenario in sorted({p.get("scenario", "") for p in pairs}):
+        usable = [p for p in pairs if p.get("scenario") == scenario and not p.get("aborted")]
+        summary = interval([p.get("difference_ms") for p in usable])
+        print(f"{scenario}: {summary['pairs']} usable pairs")
+        if summary["mean_ms"] is not None:
+            print(f"  extender - plugin, {_short(PRIMARY)} mean: "
+                  f"{summary['mean_ms']} ms [{summary['low_ms']}, {summary['high_ms']}] (95%)")
+        for side in ("extender", "plugin"):
+            shares = [p.get(f"{side}_unresolved_share") for p in usable
+                      if p.get(f"{side}_unresolved_share") is not None]
+            if shares and statistics.fmean(shares) > 0.5:
+                print(f"  note: {statistics.fmean(shares):.0%} of the {side} observations fall "
+                      "in the first 1 ms bucket; its mean is usable, its quantiles are not")
     return 0
 
 
