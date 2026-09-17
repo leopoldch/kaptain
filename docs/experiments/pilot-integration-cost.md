@@ -180,10 +180,28 @@ differences. Ten tests cover the parts that need no cluster — parsing, the res
 the unresolved-quantile case, plan replay, pairing and the refusal to compare arms running
 different strategies.
 
-**Nothing has been run.** The plugin image has never been built and the plugin has never
-placed a pod: the Docker daemon was unavailable while this was written. The order is a smoke
-run on each arm first — a handful of pods, checking placements and counters — and only then
-the ten pairs.
+**Smoke runs passed on both arms, 17 September 2026** (kind, Kubernetes v1.31.0, 3 workers,
+10 pods per arm, `dummy-random`):
+
+- 10 pods submitted, 10 placed, 10 decisions recorded on each arm — so scoring really ran,
+  and every decision saw 3 candidates;
+- **the two arms placed all 10 tasks on the same nodes**, which is the fixture parity holding
+  on real pods;
+- the plugin's `PostBind` matched its intended node 10 times out of 10, with no score ties;
+- no fallbacks, no invalid decisions, scheduler identity stable across the run;
+- worst submission lag 0.31 s (extender) and 0.26 s (plugin), against a 0.5 s steady interval:
+  usable, but close enough to the interval that the burst shape must be checked per run.
+
+The smoke run also caught a real defect that no unit test could: the extender image did not
+copy `config.py`, `metrics.py` and `telemetry.py`, so the container crash-looped on startup.
+Tests run outside the container; only a deployment finds this.
+
+Indicative numbers from those two runs, **not a result** — one run per arm, not ten pairs:
+`scheduler_scheduling_algorithm_duration_seconds` averaged 4.54 ms (extender) against 0.45 ms
+(plugin). Note that every plugin observation fell in the first 1 ms bucket, so its quantiles
+print as `<1.0ms` and only the mean is usable, exactly as anticipated.
+
+**The ten pairs have not been run.**
 
 ```bash
 make up build load deploy build-plugin load-plugin deploy-plugin
