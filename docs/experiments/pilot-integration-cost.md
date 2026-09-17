@@ -55,8 +55,29 @@ Also recorded, from the decision logs: submission → binding delay, placement t
 fallbacks (`fallback_total`, by reason), invalid decisions, `tie_count`, and
 `requests_age_ms` for the extender arm.
 
-Reported as mean, P50, P95, P99 — per run, then as paired differences across the 10 pairs
-with a confidence interval **at the level of runs, not of pods**.
+### How each number is obtained, and what it is worth
+
+**The mean is Δ_sum / Δ_count** between the scrape taken before the run and the one taken
+after. That is exactly the mean of the observations recorded in the window, under two
+conditions that the runner checks rather than assumes: the scheduler did not restart (a
+restart resets the counters, the delta goes backwards, and the run is marked unusable instead
+of producing a number), and nothing else used that scheduler during the window (one arm at a
+time, a dedicated scheduler per arm).
+
+**The quantiles are estimated from bucket counts**, as `histogram_quantile` does. They are
+approximations, and here they hit a hard floor: the native histograms of Kubernetes 1.31 use
+`ExponentialBuckets(0.001, 2, 15)`, so **the first bucket is 1 ms**. If most decisions are
+faster than that — which is plausible for `dummy-random` on the plugin path — every quantile
+lands in that bucket and means only "below 1 ms". The analysis reports such a quantile as
+`<1.0ms` and prints the share of observations that fell in the first bucket. The mean stays
+usable; the quantiles do not, and must not be dressed up as measurements.
+
+**Paired differences are computed at the level of runs.** Ten pairs give ten differences, and
+the interval is over those, reported beside the individual values.
+
+Our own `kaptain_*` series decompose a decision (snapshot, policy, normalisation) and are
+exact, but they never settle the comparison: on the extender path they exclude the transport,
+which is the whole question.
 
 ## Guards, without which the numbers mean nothing
 
@@ -76,7 +97,15 @@ with a confidence interval **at the level of runs, not of pods**.
    `integration`, strategy, seed, scenario, the telemetry collector, and the features each
    path had (`/healthz` for the extender, the plugin's startup line). **Check the two arms
    report the same strategy** before comparing anything.
-7. Report `requests_age_ms` and `telemetry_age_ms` per arm. They are separate fields
+7. **Record the real submission instants and their lag against the plan.** The runner uses
+   one `kubectl` per pod, and a process start costs tens of milliseconds: a burst submitted
+   that way may not have been a burst. `run.json` holds the planned and actual offset of
+   every pod, and `summary.csv` carries the worst lag of the run. A pair whose lag is large
+   relative to the burst window says something about the runner, not about the schedulers.
+8. **`kubectl` acts with the permissions of the current kubeconfig**, and the run record
+   states the server version it talked to. A run made with different permissions, or against
+   a different cluster, is a different run.
+9. Report `requests_age_ms` and `telemetry_age_ms` per arm. They are separate fields
    precisely so that a difference in freshness cannot hide inside one averaged number.
 
 ## What this pilot cannot conclude
@@ -92,6 +121,26 @@ therefore bounded:
 Not "the extender is X ms slower" in general, and nothing at all about placement quality.
 The same protocol on separate Linux VMs is what turns this into a result for the paper.
 
+## The two arms are not perfectly symmetric
+
+They are identical where it matters — same strategy, same snapshot, same request calculation,
+same score quantisation, same fallback, same seeded identity, all pinned by shared fixtures —
+and they differ in ways the collector has to handle rather than ignore:
+
+| | Extender | Plugin |
+|---|---|---|
+| Metric prefix | `kaptain_extender_*` | `kaptain_plugin_*` |
+| Own metrics served by | the extender service, port 8888, HTTP | the scheduler itself, port 10259, HTTPS |
+| Scheduler metrics | `ml-scheduler` — **the only place the HTTP round trip appears** | `kaptain-scheduler` |
+| Identity reported by | `GET /healthz` | the plugin's startup line |
+| Knows the bound node | no | yes, via `PostBind` |
+| Requests age | real, reported | zero by construction (scheduler cache) |
+
+Histogram buckets are deliberately identical between `kaptain_extender_*` and
+`kaptain_plugin_*`, so the two can be read side by side without conversion. Both schedulers
+expose `/metrics` without a token, which the extender arm's scheduler needed as well — its
+numbers are the only evidence of the transport cost.
+
 ## Outputs
 
 One directory per run: `run.json` (configuration, versions, seeds, scenario, arm),
@@ -101,6 +150,22 @@ after), and `summary.csv` (one row per run). Paired analysis reads `summary.csv`
 
 ## Status
 
-Not implemented. The runner is the missing piece: an arrival generator that replays the
-submission plan, a collector for the two metric endpoints, and the paired analysis. Until it
-exists, this file is the agreed protocol and nothing more.
+**The runner exists** (`experiments/`, standard library only): `plan.py` generates and
+replays the submission plan, `collect.py` reads the metrics, placements and decision logs,
+`run.py` executes one arm with its guards, `analyse.py` produces `summary.csv` and the paired
+differences. Ten tests cover the parts that need no cluster — parsing, the restart guard,
+the unresolved-quantile case, plan replay, pairing and the refusal to compare arms running
+different strategies.
+
+**Nothing has been run.** The plugin image has never been built and the plugin has never
+placed a pod: the Docker daemon was unavailable while this was written. The order is a smoke
+run on each arm first — a handful of pods, checking placements and counters — and only then
+the ten pairs.
+
+```bash
+make up build load deploy build-plugin load-plugin deploy-plugin
+make smoke-extender      # then check runs/smoke-extender/
+make smoke-plugin        # then check runs/smoke-plugin/
+make pilot PAIRS=10 SCENARIO=A-light
+make analyse
+```

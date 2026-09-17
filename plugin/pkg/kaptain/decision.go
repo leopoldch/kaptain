@@ -39,6 +39,8 @@ type Decision struct {
 	FallbackReason string
 	CandidateCount int
 	TieCount       int
+	RequestsAgeMs  float64
+	TelemetryAgeMs float64
 
 	Started        time.Time
 	SnapshotMillis float64
@@ -82,11 +84,14 @@ func (p *Plugin) logDecision(s *snapshot.Snapshot, d *Decision, normalizeMillis,
 		"namespace":       s.Pod.Namespace,
 		"pod_name":        s.Pod.Name,
 		"candidate_count": d.CandidateCount,
-		"intended_node":   d.Intended,
-		"tie_count":       d.TieCount,
-		"score":           round(d.Scores[d.Intended]),
-		"fallback":        d.Fallback(),
-		"fallback_reason": nullable(d.FallbackReason),
+		// Two ages, never one: they come from different sources at different rates.
+		"requests_age_ms":  round(d.RequestsAgeMs),
+		"telemetry_age_ms": round(d.TelemetryAgeMs),
+		"intended_node":    d.Intended,
+		"tie_count":        d.TieCount,
+		"score":            round(d.Scores[d.Intended]),
+		"fallback":         d.Fallback(),
+		"fallback_reason":  nullable(d.FallbackReason),
 		"fallback_strategy": func() any {
 			if d.Fallback() {
 				return FallbackName

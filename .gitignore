@@ -22,3 +22,8 @@ venv/
 
 # Local artifacts
 _parsecheck
+
+# Experiment outputs
+experiments/runs/
+experiments/summary.csv
+experiments/smoke.json

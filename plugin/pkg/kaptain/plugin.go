@@ -157,6 +157,7 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 
 	decision := p.decide(ctx, current)
 	decision.Started = started
+	decision.RequestsAgeMs, decision.TelemetryAgeMs = oldestAges(current)
 	decision.SnapshotMillis = snapshotMillis
 	decision.CandidateCount = len(current.Nodes)
 
@@ -399,6 +400,16 @@ func readSnapshot(state *framework.CycleState) (*snapshot.Snapshot, error) {
 // Clone satisfies framework.StateData. The decision is read-only after PreScore, apart
 // from the timing counters, which are accumulated atomically.
 func (d *Decision) Clone() framework.StateData { return d }
+
+// oldestAges reports the stalest input of the decision, per source and in milliseconds. A
+// decision is only as fresh as its oldest input, and the two sources refresh independently.
+func oldestAges(current *snapshot.Snapshot) (requests, telemetry float64) {
+	for _, node := range current.Nodes {
+		requests = math.Max(requests, node.RequestsAgeSeconds*1000)
+		telemetry = math.Max(telemetry, node.TelemetryAgeSeconds*1000)
+	}
+	return requests, telemetry
+}
 
 func millis(since time.Time) float64 {
 	return float64(time.Since(since).Microseconds()) / 1000

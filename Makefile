@@ -7,7 +7,8 @@ K8S_VERSION  := v1.31.0
         build-plugin load-plugin deploy-plugin demo-plugin logs-plugin verify-plugin \
         metrics-plugin metrics-extender demo-default test test-extender test-plugin \
         fmt-plugin lint-manifests quantities \
-        replay-plugin replay-extender all-plugin
+        replay-plugin replay-extender smoke-extender smoke-plugin pilot analyse \
+        test-experiments all-plugin
 
 # --- Cluster -----------------------------------------------------------------
 
@@ -111,9 +112,48 @@ replay-extender:
 		| curl -sS -X POST -H 'Content-Type: application/json' --data-binary @- \
 		  http://127.0.0.1:8888/replay
 
+# --- Pilot: integration cost at equal policy ------------------------------------
+# Protocol: docs/experiments/pilot-integration-cost.md. One arm at a time, always.
+
+PLAN     ?= experiments/plan.json
+RUNS     ?= experiments/runs
+SCENARIO ?= A-light
+
+$(PLAN):
+	cd experiments && python3 plan.py plan.json
+
+# A handful of pods on one arm, to check the path actually places before measuring anything.
+smoke-extender: $(PLAN)
+	cd experiments && python3 -c "from plan import steady_then_bursts; \
+	  steady_then_bursts(name='smoke', steady_count=6, steady_interval_s=0.5, bursts=1, burst_size=4).write(__import__('pathlib').Path('smoke.json'))"
+	cd experiments && python3 run.py --arm extender --plan smoke.json --out runs/smoke-extender --scenario smoke
+
+smoke-plugin: $(PLAN)
+	cd experiments && python3 -c "from plan import steady_then_bursts; \
+	  steady_then_bursts(name='smoke', steady_count=6, steady_interval_s=0.5, bursts=1, burst_size=4).write(__import__('pathlib').Path('smoke.json'))"
+	cd experiments && python3 run.py --arm plugin --plan smoke.json --out runs/smoke-plugin --scenario smoke
+
+# One pair. PAIRS=10 for the real thing; arms alternate so machine drift affects both.
+PAIRS ?= 1
+pilot: $(PLAN)
+	@cd experiments && for pair in $$(seq 1 $(PAIRS)); do \
+	  printf '\n== pair %s/%s ==\n' "$$pair" "$(PAIRS)"; \
+	  python3 run.py --arm extender --plan plan.json --scenario $(SCENARIO) \
+	    --out runs/$(SCENARIO)-$$pair-extender || exit 1; \
+	  python3 run.py --arm plugin   --plan plan.json --scenario $(SCENARIO) \
+	    --out runs/$(SCENARIO)-$$pair-plugin   || exit 1; \
+	done
+
+analyse:
+	cd experiments && python3 analyse.py runs --out summary.csv
+
+# The runner itself uses only the standard library; pytest comes from uv for the tests.
+test-experiments:
+	cd experiments && uv run --with pytest python -m pytest test_experiments.py -q
+
 # --- Tests -------------------------------------------------------------------
 
-test: test-extender test-plugin
+test: test-extender test-plugin test-experiments
 
 test-extender:
 	cd bridge && uv run --group dev pytest -q

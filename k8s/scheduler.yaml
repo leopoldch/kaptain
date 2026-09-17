@@ -20,7 +20,13 @@ spec:
           command:
             - kube-scheduler
             - --config=/etc/kubernetes/config.yaml
+            # The pilot reads scheduler_scheduling_algorithm_duration_seconds from *this*
+            # scheduler, which is the only place the extender round trip is visible.
+            - --authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics
             - --v=3
+          ports:
+            - name: metrics
+              containerPort: 10259
           volumeMounts:
             - name: config
               mountPath: /etc/kubernetes
@@ -29,6 +35,19 @@ spec:
         - name: config
           configMap:
             name: ml-scheduler-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+  labels: { app: ml-scheduler }
+spec:
+  selector: { app: ml-scheduler }
+  ports:
+    - name: metrics
+      port: 10259
+      targetPort: 10259
 ---
 apiVersion: v1
 kind: ServiceAccount

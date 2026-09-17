@@ -16,7 +16,14 @@ SUBSYSTEM = "kaptain_extender"
 
 registry = CollectorRegistry()
 
-_SECONDS = (0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5)
+# Identical to the Go plugin's ExponentialBuckets(0.0001, 2, 14), so the two histograms can
+# be read side by side without converting anything.
+_SECONDS = tuple(0.0001 * 2 ** power for power in range(14))
+
+# The plugin uses different exponential ranges for the snapshot and normalise histograms;
+# mirror them exactly so the two sides can be read side by side.
+_SNAPSHOT = tuple(0.00001 * 2 ** power for power in range(14))
+_SHORT = tuple(0.00001 * 2 ** power for power in range(12))
 _NODES = (1, 2, 3, 5, 10, 25, 50, 100, 250, 500, 1000)
 _AGES = (0.1, 0.5, 1, 2, 5, 10, 30, 60, 300)
 
@@ -25,13 +32,13 @@ score_duration = Histogram(f"{SUBSYSTEM}_score_duration_seconds",
                            ["strategy", "integration", "status"], buckets=_SECONDS, registry=registry)
 snapshot_duration = Histogram(f"{SUBSYSTEM}_snapshot_duration_seconds",
                               "Time spent building the decision snapshot.",
-                              ["strategy", "status"], buckets=_SECONDS, registry=registry)
+                              ["strategy", "status"], buckets=_SNAPSHOT, registry=registry)
 decider_duration = Histogram(f"{SUBSYSTEM}_decider_duration_seconds",
                              "Time spent in the strategy.",
                              ["strategy", "decider", "status"], buckets=_SECONDS, registry=registry)
 normalize_duration = Histogram(f"{SUBSYSTEM}_normalize_duration_seconds",
                                "Time spent quantising the scores.",
-                               ["strategy"], buckets=_SECONDS, registry=registry)
+                               ["strategy"], buckets=_SHORT, registry=registry)
 candidate_nodes = Histogram(f"{SUBSYSTEM}_candidate_nodes",
                             "Number of candidate nodes seen per decision.",
                             ["strategy"], buckets=_NODES, registry=registry)
