@@ -7,7 +7,9 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-COPY app.py ./
+# Every module, not a list that goes stale: an omitted one only shows up at startup, in a
+# CrashLoopBackOff, which is how config.py, metrics.py and telemetry.py were first missed.
+COPY *.py ./
 COPY strategies ./strategies
 
 EXPOSE 8888

@@ -11,13 +11,36 @@ spec:
     metadata:
       labels: { app: scheduler-extender }
     spec:
+      serviceAccountName: scheduler-extender
       containers:
         - name: extender
           image: kaptain-extender:dev   # local image loaded into kind
           imagePullPolicy: IfNotPresent
           env:
-            - name: STRATEGY            # single place to switch the active strategy
-              value: "dummy-random"     # or "largest-cpu-capacity", etc.
+            # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: comparing the two paths
+            # under different strategies measures the policy, not the integration.
+            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
+              value: "dummy-random"
+            # The extender protocol carries no per-node requested resources. "api" reads
+            # them from the Kubernetes API in the background, which is what makes
+            # least-allocated work here and comparable with the plugin.
+            - name: KAPTAIN_REQUESTS_SOURCE
+              value: "api"
+            - name: KAPTAIN_REQUESTS_REFRESH
+              value: "2s"
+            # Measured node usage, needed by least-used. Collectors: off, metrics-api
+            # (requires metrics-server), kubelet (reserved, not implemented). An unknown or
+            # unimplemented collector is refused at startup rather than silently ignored.
+            - name: KAPTAIN_TELEMETRY
+              value: "off"
+            - name: KAPTAIN_TELEMETRY_REFRESH
+              value: "2s"
+            - name: KAPTAIN_SEED
+              value: "7"
+            - name: RUN_ID
+              value: "unset"
+            - name: POLICY_VERSION
+              value: "unset"
           ports:
             - containerPort: 8888
           readinessProbe:
@@ -33,3 +56,36 @@ spec:
   ports:
     - port: 8888
       targetPort: 8888
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scheduler-extender
+  namespace: kube-system
+---
+# Read-only: the extender needs the requests of the pods already bound, to build the same
+# snapshot the Go plugin reads from the scheduler cache. It never writes anything.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: scheduler-extender-reader
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: scheduler-extender-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: scheduler-extender-reader
+subjects:
+  - kind: ServiceAccount
+    name: scheduler-extender
+    namespace: kube-system

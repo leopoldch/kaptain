@@ -1,0 +1,43 @@
+{
+  "comment": "One candidate left: every strategy must select it.",
+  "snapshot": {
+    "run_id": "fixture",
+    "policy_version": "fixture",
+    "seed": 1,
+    "pod": {
+      "uid": "pod-ccc",
+      "namespace": "default",
+      "name": "demo",
+      "requested_millicpu": 250,
+      "requested_memory_bytes": 134217728,
+      "task_id": "default/demo-single-node"
+    },
+    "nodes": [
+      {
+        "name": "only",
+        "allocatable_millicpu": 2000,
+        "allocatable_memory_bytes": 4294967296,
+        "requested_millicpu": 1500,
+        "requested_memory_bytes": 3221225472,
+        "pods": 9,
+        "ready": true
+      }
+    ]
+  },
+  "expected": {
+    "dummy-random": "only",
+    "largest-cpu-capacity": "only",
+    "least-allocated": "only"
+  },
+  "expected_normalized": {
+    "dummy-random": {
+      "only": 10
+    },
+    "largest-cpu-capacity": {
+      "only": 10
+    },
+    "least-allocated": {
+      "only": 10
+    }
+  }
+}

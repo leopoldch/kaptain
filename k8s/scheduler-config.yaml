@@ -19,7 +19,12 @@ data:
               - name: "*"
     extenders:
       - urlPrefix: "http://scheduler-extender.kube-system.svc.cluster.local:8888"
-        filterVerb: "filter"
+        # No filterVerb on purpose. Our /filter handler is a pass-through -- admissibility
+        # stays Kubernetes' job in both integrations -- but declaring the verb made
+        # kube-scheduler pay a second HTTP round trip per pod for an answer that never
+        # changes anything. Measured: 610 /filter calls for 610 /prioritize calls, roughly
+        # half the transport cost of this path, spent on nothing.
+        # The endpoint stays implemented, for an experiment that would genuinely filter.
         prioritizeVerb: "prioritize"
         weight: 5
         enableHTTPS: false

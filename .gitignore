@@ -15,3 +15,15 @@ venv/
 
 # Env
 .env
+
+# Go
+/tmp/
+*.test
+
+# Local artifacts
+_parsecheck
+
+# Experiment outputs
+experiments/runs/
+experiments/summary.csv
+experiments/smoke.json
