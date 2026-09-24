@@ -1,7 +1,6 @@
 # The integration: a kube-scheduler built with the KaptainScore plugin, named
 # "kaptain-scheduler". The default Kubernetes scheduler stays untouched beside it, as the
-# native reference. The policy runs in this process; scheduler-plugin-decider.yaml is the
-# same plugin with the policy in another one.
+# native reference. The policy itself runs in the decider (k8s/decider.yaml), never here.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,23 +25,22 @@ spec:
             - --authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics
             - --v=3
           env:
-            # MUST match KAPTAIN_STRATEGY in scheduler-plugin-decider.yaml and STRATEGY in
-            # decider.yaml: comparing the two arms under different strategies measures the
-            # policy, not the transport. The default is the control arm.
+            # The run's declared identity, and the metric label. It MUST match STRATEGY in
+            # decider.yaml: the decider reports what actually scored, and a disagreement is
+            # counted in kaptain_plugin_strategy_mismatch_total rather than hidden.
             - name: KAPTAIN_STRATEGY
               value: "dummy-random"
             - name: KAPTAIN_SEED          # seeded draw, so dummy-random is reproducible
               value: "7"
-            # Uncomment to send decisions to an out-of-process ML/RL/LLM decider.
-            # - name: KAPTAIN_DECIDER_URL
-            #   value: "http://kaptain-decider.kube-system.svc.cluster.local:8889/decide"
+            # Required: every policy runs out of process. The plugin refuses to start without it.
+            - name: KAPTAIN_DECIDER_URL
+              value: "http://kaptain-decider.kube-system.svc.cluster.local:8888/decide"
+            # Generous: a timeout firing would turn a measurement into fallbacks.
             - name: KAPTAIN_DECIDER_TIMEOUT
-              value: "50ms"
-            # Measured node usage, needed by least-used. Collectors: off, metrics-api
-            # (requires metrics-server), kubelet (reserved, not implemented). An unknown or
-            # unimplemented collector is refused at startup rather than silently ignored.
+              value: "2s"
+            # Measured node usage, read directly from kubelet summaries via the API server.
             - name: KAPTAIN_TELEMETRY
-              value: "off"
+              value: "kubelet"
             - name: KAPTAIN_TELEMETRY_REFRESH
               value: "2s"
             - name: RUN_ID
@@ -108,24 +106,24 @@ subjects:
     name: kaptain-scheduler
     namespace: kube-system
 ---
-# The scheduler ClusterRole does not cover metrics.k8s.io, which the telemetry source reads.
+# Kubelet summary API access via the API server proxy. Prototype-only: nodes/proxy is broad.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kaptain-scheduler-metrics-reader
+  name: kaptain-scheduler-kubelet-reader
 rules:
-  - apiGroups: ["metrics.k8s.io"]
-    resources: ["nodes"]
-    verbs: ["get", "list"]
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kaptain-scheduler-metrics-reader
+  name: kaptain-scheduler-kubelet-reader
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kaptain-scheduler-metrics-reader
+  name: kaptain-scheduler-kubelet-reader
 subjects:
   - kind: ServiceAccount
     name: kaptain-scheduler

@@ -27,3 +27,6 @@ _parsecheck
 
 # Design documents: kept locally, not committed for now.
 docs/
+
+# Raw pilot runs: 29 MB of Prometheus dumps, kept locally.
+experiments/

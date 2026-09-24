@@ -9,7 +9,7 @@ registry = CollectorRegistry()
 _SECONDS = tuple(0.0001 * 2 ** power for power in range(14))
 
 handler_duration = Histogram(f"{SUBSYSTEM}_handler_duration_seconds",
-                             "Time spent inside an HTTP handler, excluding transport.",
+                             "Time spent computing policy scores, excluding HTTP handling.",
                              ["endpoint"], buckets=_SECONDS, registry=registry)
 
 

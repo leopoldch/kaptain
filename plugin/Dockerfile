@@ -8,8 +8,9 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY cmd ./cmd
-COPY pkg ./pkg
+# The whole context, not a list of directories: an omitted one only shows up as a build
+# failure after the dependency download, and the list went stale once already.
+COPY . .
 
 ARG TARGETOS=linux
 ARG TARGETARCH

@@ -26,9 +26,6 @@ data:
           preScore:
             enabled:
               - name: KaptainScore
-          reserve:
-            enabled:
-              - name: KaptainScore
           # Without this the actual placement is never logged: PostBind is what records
           # the node kube-scheduler really bound, which matters when scores tie.
           postBind:

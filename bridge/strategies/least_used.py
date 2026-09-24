@@ -1,4 +1,4 @@
-from snapshot import FEATURE_ALLOCATABLE, FEATURE_TELEMETRY
+from helpers import FEATURE_TELEMETRY
 
 from .base import SchedulingStrategy
 
@@ -7,7 +7,6 @@ class LeastUsed(SchedulingStrategy):
     """Ranks on measured free CPU and memory rather than on requests: the protocol's BT arm."""
 
     name = "least-used"
-    requires = frozenset({FEATURE_ALLOCATABLE, FEATURE_TELEMETRY})
 
     def scores(self, snapshot: dict) -> dict[str, float]:
         if not snapshot["nodes"]:

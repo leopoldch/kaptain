@@ -1,4 +1,4 @@
-module github.com/leopoldch/kaptain/plugin
+module kaptain
 
 go 1.23.0
 
@@ -8,9 +8,8 @@ require (
 	k8s.io/client-go v0.31.0
 	k8s.io/component-base v0.31.0
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kube-scheduler v0.0.0
+	k8s.io/kubelet v0.31.0
 	k8s.io/kubernetes v1.31.0
-	k8s.io/metrics v0.0.0
 )
 
 require (
@@ -111,7 +110,7 @@ require (
 	k8s.io/dynamic-resource-allocation v0.0.0 // indirect
 	k8s.io/kms v0.31.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
-	k8s.io/kubelet v0.31.0 // indirect
+	k8s.io/kube-scheduler v0.0.0 // indirect
 	k8s.io/mount-utils v0.0.0 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.30.3 // indirect
@@ -145,7 +144,6 @@ replace (
 	k8s.io/kube-scheduler => k8s.io/kube-scheduler v0.31.0
 	k8s.io/kubectl => k8s.io/kubectl v0.31.0
 	k8s.io/kubelet => k8s.io/kubelet v0.31.0
-	k8s.io/metrics => k8s.io/metrics v0.31.0
 	k8s.io/mount-utils => k8s.io/mount-utils v0.31.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.31.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.31.0

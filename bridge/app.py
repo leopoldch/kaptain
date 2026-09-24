@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import Response
 
 import metrics as decider_metrics
-from snapshot import INTEGRATION, MAX_EXTENDER_PRIORITY, best, names, normalize
+from helpers import INTEGRATION
 from strategies import get_strategy
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -31,29 +31,9 @@ def prometheus_metrics():
 
 @app.post("/decide")
 def decide(snapshot: dict):
-    # Timed here and on the caller side; the difference is the transport.
+    # `strategy` names what actually scored, not what the caller believes is deployed here:
+    # the plugin records it, so a run cannot report a policy that never ran.
     started = time.perf_counter()
     scores = strategy.scores(snapshot)
     decider_metrics.handler_duration.labels("decide").observe(time.perf_counter() - started)
-    return {"scores": scores}
-
-
-@app.post("/replay")
-def replay(snapshot: dict):
-    # Scores a recorded snapshot without touching the cluster; kaptain-replay is the twin.
-    started = time.perf_counter()
-    scores = strategy.scores(snapshot)
-    elapsed = (time.perf_counter() - started) * 1000
-    return {
-        "integration": INTEGRATION,
-        "mode": "replay",
-        "strategy": strategy.name,
-        "run_id": snapshot.get("run_id", "unset"),
-        "policy_version": snapshot.get("policy_version", "unset"),
-        "pod_task_id": snapshot.get("pod", {}).get("task_id", ""),
-        "intended_node": best(names(snapshot), scores),
-        "scores": scores,
-        "normalized": normalize(scores),
-        "scale": MAX_EXTENDER_PRIORITY,
-        "duration_ms": round(elapsed, 3),
-    }
+    return {"scores": scores, "strategy": strategy.name}

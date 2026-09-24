@@ -1,4 +1,4 @@
-from snapshot import names, pick
+from helpers import names, pick
 
 from .base import SchedulingStrategy
 
