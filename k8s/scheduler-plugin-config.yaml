@@ -23,7 +23,13 @@ data:
             enabled:
               - name: KaptainScore
                 weight: 1
+          # PreScore is its own extension point: disabling the native Score plugins leaves
+          # NodeAffinity, TaintToleration, PodTopologySpread, InterPodAffinity and
+          # VolumeBinding still running their PreScore. Their work would land in the cost we
+          # are trying to measure.
           preScore:
+            disabled:
+              - name: "*"
             enabled:
               - name: KaptainScore
           # Without this the actual placement is never logged: PostBind is what records

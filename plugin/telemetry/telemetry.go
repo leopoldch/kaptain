@@ -19,13 +19,26 @@ import (
 type Usage struct {
 	MilliCPU    int64
 	MemoryBytes int64
-	AgeSeconds  float64
+
+	// AgeSeconds is measured on our clock, from when the sample arrived.
+	AgeSeconds float64
+
+	// SkewSeconds is our clock minus the kubelet's for the same sample. It is not an age:
+	// it is how far apart the two machines think they are, and it only means anything once
+	// the nodes are separate machines.
+	SkewSeconds float64
 }
 
 type sample struct {
 	milliCPU    int64
 	memoryBytes int64
-	measuredAt  time.Time
+
+	// measuredAt is the kubelet's own clock; receivedAt is ours. Expiry uses receivedAt,
+	// because the difference between two machines' clocks is not an age: a node running
+	// ahead would look permanently fresh, one running behind would expire while current.
+	// measuredAt is kept because the gap between the two is what reveals the skew.
+	measuredAt time.Time
+	receivedAt time.Time
 }
 
 type Source interface {
@@ -164,6 +177,7 @@ func sampleFromSummary(summary statsapi.Summary) (sample, bool) {
 		milliCPU:    int64(*cpu.UsageNanoCores / 1_000_000),
 		memoryBytes: int64(*memory.WorkingSetBytes),
 		measuredAt:  measuredAt,
+		receivedAt:  time.Now(),
 	}, true
 }
 
@@ -175,7 +189,7 @@ func (c *client) Get(node string) (Usage, bool) {
 		return Usage{}, false
 	}
 
-	age := time.Since(entry.measuredAt)
+	age := time.Since(entry.receivedAt)
 	if age < 0 {
 		age = 0
 	}
@@ -186,5 +200,6 @@ func (c *client) Get(node string) (Usage, bool) {
 		MilliCPU:    entry.milliCPU,
 		MemoryBytes: entry.memoryBytes,
 		AgeSeconds:  age.Seconds(),
+		SkewSeconds: entry.receivedAt.Sub(entry.measuredAt).Seconds(),
 	}, true
 }

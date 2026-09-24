@@ -14,8 +14,8 @@ func fallbackNode(s *snapshot.Snapshot) string {
 	nodes := append([]snapshot.Node(nil), s.Nodes...)
 	sort.Slice(nodes, func(i, j int) bool {
 		left, right := nodes[i], nodes[j]
-		if free := freeRatio(left); free != freeRatio(right) {
-			return free > freeRatio(right)
+		if free := freeRatio(left, s.Pod); free != freeRatio(right, s.Pod) {
+			return free > freeRatio(right, s.Pod)
 		}
 		if left.AllocatableMilliCPU != right.AllocatableMilliCPU {
 			return left.AllocatableMilliCPU > right.AllocatableMilliCPU
@@ -40,13 +40,19 @@ func fallbackScores(s *snapshot.Snapshot) map[string]float64 {
 	return scores
 }
 
-func freeRatio(n snapshot.Node) float64 {
-	if n.AllocatableMilliCPU <= 0 {
+// freeRatio is the mean of the CPU and memory ratios left once the incoming Pod is added,
+// which is the same definition as the least-allocated strategy in bridge/strategies. The
+// fallback is named after it, so it has to compute it: CPU alone was a different rule under
+// the same name.
+func freeRatio(n snapshot.Node, pod snapshot.Pod) float64 {
+	cpu := free(n.AllocatableMilliCPU, n.RequestedMilliCPU+pod.RequestedMilliCPU)
+	memory := free(n.AllocatableMemoryBytes, n.RequestedMemoryBytes+pod.RequestedMemoryBytes)
+	return (cpu + memory) / 2
+}
+
+func free(allocatable, requested int64) float64 {
+	if allocatable <= 0 || requested >= allocatable {
 		return 0
 	}
-	free := n.AllocatableMilliCPU - n.RequestedMilliCPU
-	if free <= 0 {
-		return 0
-	}
-	return float64(free) / float64(n.AllocatableMilliCPU)
+	return float64(allocatable-requested) / float64(allocatable)
 }

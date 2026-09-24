@@ -1,6 +1,7 @@
 # The out-of-process decider: a snapshot in, scores out. It does not build snapshots and
 # does not apply the fallback; the plugin does both.
 
+import json
 import logging
 import os
 import time
@@ -13,6 +14,7 @@ from helpers import INTEGRATION
 from strategies import get_strategy
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+log = logging.getLogger("kaptain.decider")
 
 strategy = get_strategy(os.getenv("STRATEGY", "dummy-random"))
 
@@ -35,5 +37,17 @@ def decide(snapshot: dict):
     # the plugin records it, so a run cannot report a policy that never ran.
     started = time.perf_counter()
     scores = strategy.scores(snapshot)
-    decider_metrics.handler_duration.labels("decide").observe(time.perf_counter() - started)
+    elapsed = time.perf_counter() - started
+    decider_metrics.handler_duration.labels("decide").observe(elapsed)
+    # One line per decision, keyed by the id the plugin generated. The histogram above is
+    # aggregated, so without this a single decision cannot be followed from the scheduler
+    # into the policy and back out to the binding.
+    log.info(json.dumps({
+        "decision_id": snapshot.get("decision_id", ""),
+        "run_id": snapshot.get("run_id", "unset"),
+        "strategy": strategy.name,
+        "scores": scores,
+        "duration_ms": round(elapsed * 1000, 3),
+        "event": "decide",
+    }))
     return {"scores": scores, "strategy": strategy.name}

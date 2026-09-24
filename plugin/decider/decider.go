@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"kaptain/snapshot"
@@ -27,6 +28,44 @@ type Client struct {
 
 func New(url string, timeout time.Duration) *Client {
 	return &Client{URL: url, Timeout: timeout, http: &http.Client{Timeout: timeout}}
+}
+
+// Health returns the strategy the decider says it is running. It is asked once at startup,
+// so a run cannot begin with the plugin and the decider disagreeing about what is being
+// measured.
+func (c *Client) Health(ctx context.Context) (string, error) {
+	target, err := url.Parse(c.URL)
+	if err != nil {
+		return "", fmt.Errorf("decider URL: %w", err)
+	}
+	target.Path = "/healthz"
+
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("call decider: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("decider returned %s", resp.Status)
+	}
+
+	var decoded struct {
+		Strategy string `json:"strategy"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	if decoded.Strategy == "" {
+		return "", fmt.Errorf("decider did not name its strategy")
+	}
+	return decoded.Strategy, nil
 }
 
 // Decide returns raw scores per node, and the name the decider gives the policy that

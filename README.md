@@ -55,9 +55,9 @@ This overhead includes serialization, HTTP, FastAPI dispatch and response decodi
 not a measurement of network latency alone. Compare means over the same successful calls,
 not independently computed percentiles.
 
-Measured on kind over nine decisions: **2.95 ms** caller-side against **0.13 ms** for the
-policy, so about **2.8 ms of non-policy overhead**. Indicative, not a result — one machine,
-two cold calls, nine samples.
+No number is quoted here yet. The only measurement so far predates the changes that moved
+the scheduler and the decider onto the control plane and disabled the native PreScore
+plugins, so it no longer describes this code.
 
 ## Run
 
@@ -90,8 +90,10 @@ kubelet proxy endpoints.
 
 Decider environment: `STRATEGY`, and nothing else — it reads no cluster state, because
 everything the policy needs arrives in the request body. It reports on every `/decide` the
-name of what actually ran, and a disagreement with `KAPTAIN_STRATEGY` is counted in
-`kaptain_plugin_strategy_mismatch_total` rather than hidden.
+name of what actually ran. The plugin **refuses to start** if that name disagrees with
+`KAPTAIN_STRATEGY`, and refuses the decision — explicit fallback, `strategy_mismatch` — if
+they come to disagree afterwards, which is what a decider redeployed under a running
+scheduler looks like.
 
 **Durations** accept a Go duration string (`2s`, `500ms`) or a bare number of seconds, and an
 unparseable value fails at startup rather than becoming a default.
@@ -143,7 +145,9 @@ never one: requested resources and measured usage go stale at different rates.
  "fallback": false, "durations_ms": {"snapshot": 0.012, "decider": 1.41, "total": 1.43}}
 ```
 
-`fallback_reason` is `decider_error`, `invalid_score`, `invalid_choice` or `no_candidates`.
+`fallback_reason` is `decider_error`, `strategy_mismatch`, `invalid_score` or
+`no_candidates`. The decision line carries both `policy_scores` — what the decider answered,
+kept even when it was refused — and `effective_scores`, which is what Kubernetes ranked on.
 Set `RUN_ID` and `POLICY_VERSION` so the lines can be joined with a run.
 
 ## Testbed

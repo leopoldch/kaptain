@@ -1,6 +1,8 @@
 package scoring
 
 import (
+	"sort"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 
@@ -33,6 +35,10 @@ func (p *Plugin) buildSnapshot(pod *v1.Pod, nodes []*framework.NodeInfo) *snapsh
 	for _, node := range nodes {
 		out.Nodes = append(out.Nodes, p.nodeSnapshot(node))
 	}
+	// Kubernetes hands the candidates over in no particular order. A heuristic barely
+	// notices; a prompt does, so the decider must see the same list twice for the same
+	// cluster state or a run is not reproducible.
+	sort.Slice(out.Nodes, func(i, j int) bool { return out.Nodes[i].Name < out.Nodes[j].Name })
 	return out
 }
 
@@ -64,6 +70,7 @@ func (p *Plugin) nodeSnapshot(node *framework.NodeInfo) snapshot.Node {
 			entry.UsedMilliCPU = usage.MilliCPU
 			entry.UsedMemoryBytes = usage.MemoryBytes
 			entry.TelemetryAgeSeconds = usage.AgeSeconds
+			entry.ClockSkewSeconds = usage.SkewSeconds
 		} else {
 			entry.Missing = append(entry.Missing, snapshot.FeatureTelemetry)
 			missingFeaturesTotal.WithLabelValues(snapshot.FeatureTelemetry).Inc()

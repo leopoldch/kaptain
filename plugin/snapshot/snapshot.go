@@ -40,12 +40,20 @@ type Node struct {
 	Pods                   int    `json:"pods"`
 	Ready                  bool   `json:"ready"`
 	// Two ages, never one: a single mixed age cannot say which input was stale.
-	RequestsAgeSeconds  float64  `json:"requests_age_seconds,omitempty"`
-	TelemetryAgeSeconds float64  `json:"telemetry_age_seconds,omitempty"`
-	Missing             []string `json:"missing,omitempty"`
+	RequestsAgeSeconds  float64 `json:"requests_age_seconds,omitempty"`
+	TelemetryAgeSeconds float64 `json:"telemetry_age_seconds,omitempty"`
+
+	// ClockSkewSeconds is this node's kubelet clock against ours for the same sample. It
+	// is not part of the age; it is there so a run on separate machines can show whether
+	// the clocks were synchronised at all.
+	ClockSkewSeconds float64  `json:"clock_skew_seconds,omitempty"`
+	Missing          []string `json:"missing,omitempty"`
 }
 
 type Snapshot struct {
+	// DecisionID joins this request to the decision line and to the binding line, so a
+	// placement can be traced across the scheduler, the decider and the result.
+	DecisionID    string `json:"decision_id"`
 	RunID         string `json:"run_id"`
 	PolicyVersion string `json:"policy_version"`
 	Integration   string `json:"integration"`

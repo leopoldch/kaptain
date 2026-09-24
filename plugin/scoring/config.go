@@ -1,6 +1,8 @@
 package scoring
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -22,6 +24,11 @@ type Config struct {
 	TelemetryMaxAge time.Duration
 	RunID           string
 	PolicyVersion   string
+
+	// InstanceID distinguishes one scheduler process from the next. RUN_ID survives a
+	// restart and the decision counter does not, so without this two processes of the same
+	// run hand out the same decision ids.
+	InstanceID string
 }
 
 const (
@@ -42,9 +49,17 @@ func configFromEnv() (Config, error) {
 		return value
 	}
 
+	integer := func(key string, fallback int64) int64 {
+		value, err := envInt(key, fallback)
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
+		return value
+	}
+
 	config := Config{
 		Strategy:        env("KAPTAIN_STRATEGY", defaultStrategy),
-		Seed:            envInt("KAPTAIN_SEED", 0),
+		Seed:            integer("KAPTAIN_SEED", 0),
 		DeciderURL:      env("KAPTAIN_DECIDER_URL", ""),
 		DeciderTimeout:  duration("KAPTAIN_DECIDER_TIMEOUT", defaultDeciderTimeout),
 		Telemetry:       env("KAPTAIN_TELEMETRY", telemetry.Kubelet),
@@ -52,11 +67,27 @@ func configFromEnv() (Config, error) {
 		TelemetryMaxAge: duration("KAPTAIN_TELEMETRY_MAX_AGE", defaultTelemetryMaxAge),
 		RunID:           env("RUN_ID", unset),
 		PolicyVersion:   env("POLICY_VERSION", unset),
+		InstanceID:      instanceID(),
 	}
 	if len(errs) > 0 {
 		return config, fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return config, nil
+}
+
+// instanceID names the process, not the Pod: a container restart keeps POD_NAME, so the
+// Pod name alone lets a second process reuse the first one's decision ids. The nonce is
+// what makes them unique; POD_NAME is there so a human can find the process afterwards.
+func instanceID() string {
+	var raw [8]byte
+	nonce := unset
+	if _, err := rand.Read(raw[:]); err == nil {
+		nonce = hex.EncodeToString(raw[:])
+	}
+	if name := os.Getenv("POD_NAME"); name != "" {
+		return name + "-" + nonce
+	}
+	return nonce
 }
 
 func env(key, fallback string) string {
@@ -66,12 +97,18 @@ func env(key, fallback string) string {
 	return fallback
 }
 
-func envInt(key string, fallback int64) int64 {
-	value, err := strconv.ParseInt(os.Getenv(key), 10, 64)
-	if err != nil {
-		return fallback
+// envInt refuses what it cannot parse. KAPTAIN_SEED=abc silently becoming 0 would give a
+// run a seed it never chose, and every seeded draw in it would be unexplainable.
+func envInt(key string, fallback int64) (int64, error) {
+	text := strings.TrimSpace(os.Getenv(key))
+	if text == "" {
+		return fallback, nil
 	}
-	return value
+	value, err := strconv.ParseInt(text, 10, 64)
+	if err != nil {
+		return fallback, fmt.Errorf("%s=%q is not an integer", key, text)
+	}
+	return value, nil
 }
 
 // envDuration refuses what it cannot parse, so a typo cannot pass for a configured value.

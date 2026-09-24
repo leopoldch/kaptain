@@ -27,6 +27,10 @@ const Name = "KaptainScore"
 
 const stateKey framework.StateKey = "kaptain.decision"
 
+// startupGrace is how long the plugin waits for the decider before giving up. The kubelet
+// restarts it, so a decider that comes up late costs a restart, not a silent fallback.
+const startupGrace = 90 * time.Second
+
 type Plugin struct {
 	config    Config
 	decider   *decider.Client
@@ -65,11 +69,44 @@ func New(ctx context.Context, _ runtime.Object, handle framework.Handle) (framew
 		plugin.telemetry = source
 	}
 
+	if err := plugin.agreeOnStrategy(ctx); err != nil {
+		return nil, err
+	}
+
 	klog.InfoS("kaptain plugin ready", "declaredStrategy", config.Strategy,
+		"instanceID", config.InstanceID,
 		"deciderURL", config.DeciderURL, "deciderTimeout", config.DeciderTimeout,
 		"runID", config.RunID, "policyVersion", config.PolicyVersion,
 		"features", plugin.features(), "telemetryCollector", plugin.telemetryName())
 	return plugin, nil
+}
+
+// agreeOnStrategy refuses to start unless the decider is reachable and running the policy
+// this deployment declares. A run whose metrics are labelled with one strategy while
+// another one scored is not a result, so it must not be possible to start one; and waiting
+// here also means the scheduler is not Ready before the decider can answer.
+func (p *Plugin) agreeOnStrategy(ctx context.Context) error {
+	deadline := time.Now().Add(startupGrace)
+	var last error
+	for {
+		reported, err := p.decider.Health(ctx)
+		if err == nil {
+			if reported != p.config.Strategy {
+				return fmt.Errorf("the decider runs %q but KAPTAIN_STRATEGY declares %q: a run "+
+					"cannot be labelled with a policy that did not score", reported, p.config.Strategy)
+			}
+			return nil
+		}
+		last = err
+		if time.Now().After(deadline) {
+			return fmt.Errorf("decider unreachable after %s: %w", startupGrace, last)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 func (p *Plugin) Name() string { return Name }
@@ -107,8 +144,10 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 		return framework.NewStatus(framework.Skip)
 	}
 
+	decisionID := newDecisionID(p.config.RunID, p.config.InstanceID)
 	snapshotStarted := time.Now()
 	current := p.buildSnapshot(pod, nodes)
+	current.DecisionID = decisionID
 	snapshotMillis := millis(snapshotStarted)
 	snapshotDuration.WithLabelValues(strategy, "ok").Observe(snapshotMillis / 1000)
 	candidateNodes.WithLabelValues(strategy).Observe(float64(len(current.Nodes)))
@@ -122,6 +161,7 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 	}
 
 	decision := p.decide(ctx, current)
+	decision.ID = decisionID
 	decision.RequestsAgeMs, decision.TelemetryAgeMs = oldestAges(current)
 	decision.SnapshotMillis = snapshotMillis
 	decision.CandidateCount = len(current.Nodes)
@@ -149,21 +189,29 @@ func (p *Plugin) decide(ctx context.Context, current *snapshot.Snapshot) *Decisi
 	scores, reported, err := p.decider.Decide(ctx, current)
 	decision.DeciderMillis = millis(deciderStarted)
 	decision.DeciderStrategy = reported
-	if reported != "" && reported != decision.Strategy {
-		strategyMismatchTotal.WithLabelValues(decision.Strategy, reported).Inc()
-	}
 
 	status := "ok"
-	if err != nil {
+	switch {
+	case err != nil:
 		status = "error"
 		decision.FallbackReason = reasonDeciderError
-	} else if !validScores(current, scores) {
+	case reported != decision.Strategy:
+		// Either the decider was redeployed under a running scheduler, or it answered
+		// without naming its policy at all. Both mean the scores cannot be attributed, so
+		// both are refused: the startup check cannot see a change made after it ran.
+		status = "mismatch"
+		decision.FallbackReason = reasonMismatch
+		strategyMismatchTotal.WithLabelValues(decision.Strategy, reported).Inc()
+	case !validScores(current, scores):
 		status = "invalid"
 		decision.FallbackReason = reasonInvalidScore
 		invalidDecisionTotal.WithLabelValues(decision.Strategy, reasonInvalidScore).Inc()
 	}
 	deciderDuration.WithLabelValues(decision.Strategy, status).Observe(decision.DeciderMillis / 1000)
 
+	// Keep what the policy answered before the fallback overwrites it: on a refused
+	// decision that is the only record of what the model actually said.
+	decision.PolicyScores = scores
 	if decision.Fallback() {
 		klog.V(2).InfoS("kaptain fallback", "reason", decision.FallbackReason, "error", err,
 			"strategy", decision.Strategy, "fallbackStrategy", FallbackName)
@@ -200,14 +248,18 @@ func (p *Plugin) ScoreExtensions() framework.ScoreExtensions { return nil }
 
 // PostBind records where the pod actually landed, which on a tie is not the intended node.
 func (p *Plugin) PostBind(_ context.Context, state *framework.CycleState, pod *v1.Pod, nodeName string) {
-	intended, ties := "", 0
+	decisionID, intended, ties := "", "", 0
+	var winners []string
 	if decision, err := readDecision(state); err == nil {
-		intended, ties = decision.Intended, decision.TieCount
-		if intended != nodeName {
+		decisionID, intended, ties = decision.ID, decision.Intended, decision.TieCount
+		winners = decision.Winners
+		// A binding on any top-scoring node followed the policy; only kube-scheduler's
+		// random tie-break chose differently from our name-ordered Intended.
+		if !contains(winners, nodeName) {
 			boundMismatchTotal.WithLabelValues(decision.Strategy).Inc()
 		}
 	}
-	p.logBinding(string(pod.UID), pod.Namespace, pod.Name, intended, nodeName, ties)
+	p.logBinding(decisionID, string(pod.UID), pod.Namespace, pod.Name, intended, nodeName, winners, ties)
 }
 
 func readDecision(state *framework.CycleState) (*Decision, error) {

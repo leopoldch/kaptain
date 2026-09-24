@@ -14,6 +14,17 @@ spec:
     metadata:
       labels: { app: kaptain-scheduler }
     spec:
+      # Kaptain must not run on a node it schedules onto. The kubelet summary reports the
+      # whole node's usage, so a scheduler or a decider sitting on a worker inflates that
+      # worker's measured load, and least-used would then avoid a node for no reason but
+      # Kaptain being there. The control plane is tainted in kind and excluded from the
+      # candidates, which is exactly where this belongs.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       serviceAccountName: kaptain-scheduler
       containers:
         - name: kube-scheduler
@@ -26,8 +37,8 @@ spec:
             - --v=3
           env:
             # The run's declared identity, and the metric label. It MUST match STRATEGY in
-            # decider.yaml: the decider reports what actually scored, and a disagreement is
-            # counted in kaptain_plugin_strategy_mismatch_total rather than hidden.
+            # decider.yaml: the plugin refuses to start on a disagreement, and refuses the
+            # decision if they come to disagree while running.
             - name: KAPTAIN_STRATEGY
               value: "dummy-random"
             - name: KAPTAIN_SEED          # seeded draw, so dummy-random is reproducible
@@ -43,6 +54,11 @@ spec:
               value: "kubelet"
             - name: KAPTAIN_TELEMETRY_REFRESH
               value: "2s"
+            # Downward API: the decision id carries it, so a decision can be traced to the
+            # process that took it -- and two processes of one run cannot collide.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
             - name: RUN_ID
               value: "unset"
             - name: POLICY_VERSION

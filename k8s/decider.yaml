@@ -16,6 +16,17 @@ spec:
     metadata:
       labels: { app: kaptain-decider }
     spec:
+      # Kaptain must not run on a node it schedules onto. The kubelet summary reports the
+      # whole node's usage, so a scheduler or a decider sitting on a worker inflates that
+      # worker's measured load, and least-used would then avoid a node for no reason but
+      # Kaptain being there. The control plane is tainted in kind and excluded from the
+      # candidates, which is exactly where this belongs.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: decider
           image: kaptain-decider:dev   # local image loaded into kind

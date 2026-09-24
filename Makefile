@@ -38,18 +38,13 @@ deploy-plugin: deploy-decider
 demo-plugin: wait-ready
 	kubectl apply -f k8s/demo-workload-plugin.yaml
 
-# A rollout being "available" is not enough: the Deployment can be ready while kube-proxy
-# has not yet programmed the Service ClusterIP, and the first decision then dies on
-# "connection refused" and is placed by the fallback. Reach the Service the way the
-# scheduler will, from inside the cluster, and wait until it actually answers.
+# The scheduler is not Ready until its own startup check has reached the decider through
+# the same Service, so these two rollouts are the whole wait. A probe Pod of our own would
+# land on a worker -- a measured node -- and leave its CPU in the kubelet summary that the
+# first least-used decision reads.
 wait-ready:
 	kubectl -n kube-system rollout status deploy/kaptain-decider --timeout=120s
-	kubectl -n kube-system rollout status deploy/kaptain-scheduler --timeout=120s
-	@kubectl run kaptain-wait --rm -i --restart=Never --image=busybox:1.36 --command -- \
-	  sh -c 'for i in $$(seq 1 60); do \
-	    wget -qO- http://kaptain-decider.kube-system.svc.cluster.local:8888/healthz >/dev/null 2>&1 \
-	      && echo "decider reachable" && exit 0; \
-	    sleep 1; done; echo "decider unreachable after 60s"; exit 1'
+	kubectl -n kube-system rollout status deploy/kaptain-scheduler --timeout=180s
 
 demo-default:
 	kubectl apply -f k8s/demo-workload-default.yaml
@@ -99,8 +94,10 @@ metrics-decider:
 # --- Checks ------------------------------------------------------------------
 # No automated test suite: this is a research prototype.
 
+# gofmt -l prints the offenders and exits 0, so on its own it can never fail a check.
 check: lint-manifests
-	cd plugin && gofmt -l . && go vet ./...
+	@cd plugin && out=$$(gofmt -l .); if [ -n "$$out" ]; then echo "gofmt: $$out"; exit 1; fi
+	cd plugin && go vet ./...
 
 fmt-plugin:
 	cd plugin && gofmt -w .
