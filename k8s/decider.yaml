@@ -1,0 +1,43 @@
+# The out-of-process decider the plugin calls when KAPTAIN_DECIDER_URL is set.
+#
+# No ServiceAccount and no RBAC: this process never reads the Kubernetes API. The plugin
+# builds the snapshot from the scheduler cache and sends it; everything the policy needs is
+# in the request body. That is the whole difference with the extender this replaced.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaptain-decider
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kaptain-decider }
+  template:
+    metadata:
+      labels: { app: kaptain-decider }
+    spec:
+      containers:
+        - name: decider
+          image: kaptain-decider:dev   # local image loaded into kind
+          imagePullPolicy: IfNotPresent
+          env:
+            # MUST match KAPTAIN_STRATEGY in scheduler-plugin-decider.yaml: comparing the
+            # two plugin arms under different strategies measures the policy, not the
+            # transport.
+            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
+              value: "dummy-random"
+          ports:
+            - containerPort: 8888
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8888 }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaptain-decider
+  namespace: kube-system
+spec:
+  selector: { app: kaptain-decider }
+  ports:
+    - port: 8888
+      targetPort: 8888

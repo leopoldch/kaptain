@@ -15,3 +15,15 @@ venv/
 
 # Env
 .env
+
+# Go
+/tmp/
+*.test
+
+# Local artifacts
+_parsecheck
+
+# Experiment outputs
+
+# Design documents: kept locally, not committed for now.
+docs/

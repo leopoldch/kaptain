@@ -1,0 +1,116 @@
+{
+  "name": "smoke",
+  "seed": 7,
+  "tasks": [
+    {
+      "task_id": "smoke-steady-000",
+      "arrival_offset_s": 0.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-steady-001",
+      "arrival_offset_s": 0.5,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-steady-002",
+      "arrival_offset_s": 1.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-steady-003",
+      "arrival_offset_s": 1.5,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-steady-004",
+      "arrival_offset_s": 2.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-steady-005",
+      "arrival_offset_s": 2.5,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-burst0-000",
+      "arrival_offset_s": 13.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-burst0-001",
+      "arrival_offset_s": 13.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-burst0-002",
+      "arrival_offset_s": 13.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    },
+    {
+      "task_id": "smoke-burst0-003",
+      "arrival_offset_s": 13.0,
+      "image": "busybox:1.36",
+      "cpu": "10m",
+      "memory": "16Mi",
+      "command": [
+        "sleep",
+        "60"
+      ]
+    }
+  ]
+}

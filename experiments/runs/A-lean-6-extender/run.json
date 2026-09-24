@@ -1,0 +1,517 @@
+{
+  "run_id": "20260917-180744-extender",
+  "arm": "extender",
+  "plan": "plan.json",
+  "scenario": "A-lean",
+  "pair_id": "6",
+  "started_at": "2026-09-17T22:07:44Z",
+  "finished_at": "2026-09-17T22:08:46Z",
+  "strategy": "dummy-random",
+  "seed": "",
+  "telemetry_collector": "off",
+  "kubernetes_version": "v1.31.0",
+  "feasible_nodes": [
+    "kaptain-worker",
+    "kaptain-worker2",
+    "kaptain-worker3"
+  ],
+  "nodes_that_fit": [
+    "kaptain-worker",
+    "kaptain-worker2",
+    "kaptain-worker3"
+  ],
+  "scheduler_before": {
+    "pod_uid": "49439a04-d09b-4213-930e-ccd3018e711a",
+    "restarts": 0,
+    "started_at": "2026-09-17T21:52:40Z"
+  },
+  "scheduler_after": {
+    "pod_uid": "49439a04-d09b-4213-930e-ccd3018e711a",
+    "restarts": 0,
+    "started_at": "2026-09-17T21:52:40Z"
+  },
+  "decisions_seen": 60,
+  "submissions": [
+    {
+      "task_id": "pilot-steady-000",
+      "planned_offset_s": 0.0,
+      "actual_offset_s": 0.0,
+      "lag_s": 0.0,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-001",
+      "planned_offset_s": 1.0,
+      "actual_offset_s": 1.001,
+      "lag_s": 0.001,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-002",
+      "planned_offset_s": 2.0,
+      "actual_offset_s": 2.002,
+      "lag_s": 0.002,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-003",
+      "planned_offset_s": 3.0,
+      "actual_offset_s": 3.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-004",
+      "planned_offset_s": 4.0,
+      "actual_offset_s": 4.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-005",
+      "planned_offset_s": 5.0,
+      "actual_offset_s": 5.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-006",
+      "planned_offset_s": 6.0,
+      "actual_offset_s": 6.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-007",
+      "planned_offset_s": 7.0,
+      "actual_offset_s": 7.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-008",
+      "planned_offset_s": 8.0,
+      "actual_offset_s": 8.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-009",
+      "planned_offset_s": 9.0,
+      "actual_offset_s": 9.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-010",
+      "planned_offset_s": 10.0,
+      "actual_offset_s": 10.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-011",
+      "planned_offset_s": 11.0,
+      "actual_offset_s": 11.006,
+      "lag_s": 0.006,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-012",
+      "planned_offset_s": 12.0,
+      "actual_offset_s": 12.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-013",
+      "planned_offset_s": 13.0,
+      "actual_offset_s": 13.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-014",
+      "planned_offset_s": 14.0,
+      "actual_offset_s": 14.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-015",
+      "planned_offset_s": 15.0,
+      "actual_offset_s": 15.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-016",
+      "planned_offset_s": 16.0,
+      "actual_offset_s": 16.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-017",
+      "planned_offset_s": 17.0,
+      "actual_offset_s": 17.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-018",
+      "planned_offset_s": 18.0,
+      "actual_offset_s": 18.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-019",
+      "planned_offset_s": 19.0,
+      "actual_offset_s": 19.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-020",
+      "planned_offset_s": 20.0,
+      "actual_offset_s": 20.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-021",
+      "planned_offset_s": 21.0,
+      "actual_offset_s": 21.006,
+      "lag_s": 0.006,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-022",
+      "planned_offset_s": 22.0,
+      "actual_offset_s": 22.001,
+      "lag_s": 0.001,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-023",
+      "planned_offset_s": 23.0,
+      "actual_offset_s": 23.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-024",
+      "planned_offset_s": 24.0,
+      "actual_offset_s": 24.002,
+      "lag_s": 0.002,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-025",
+      "planned_offset_s": 25.0,
+      "actual_offset_s": 25.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-026",
+      "planned_offset_s": 26.0,
+      "actual_offset_s": 26.008,
+      "lag_s": 0.008,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-027",
+      "planned_offset_s": 27.0,
+      "actual_offset_s": 27.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-028",
+      "planned_offset_s": 28.0,
+      "actual_offset_s": 28.001,
+      "lag_s": 0.001,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-steady-029",
+      "planned_offset_s": 29.0,
+      "actual_offset_s": 29.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-000",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-001",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.143,
+      "lag_s": 0.143,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-002",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.2,
+      "lag_s": 0.2,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-003",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.254,
+      "lag_s": 0.254,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-004",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.311,
+      "lag_s": 0.311,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-005",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.366,
+      "lag_s": 0.366,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-006",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.42,
+      "lag_s": 0.42,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-007",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.475,
+      "lag_s": 0.475,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-008",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.539,
+      "lag_s": 0.539,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst0-009",
+      "planned_offset_s": 40.0,
+      "actual_offset_s": 40.608,
+      "lag_s": 0.608,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-000",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-001",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.147,
+      "lag_s": 0.147,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-002",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.202,
+      "lag_s": 0.202,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-003",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.257,
+      "lag_s": 0.257,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-004",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.31,
+      "lag_s": 0.31,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-005",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.367,
+      "lag_s": 0.367,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-006",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.42,
+      "lag_s": 0.42,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-007",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.478,
+      "lag_s": 0.478,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-008",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.539,
+      "lag_s": 0.539,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst1-009",
+      "planned_offset_s": 50.0,
+      "actual_offset_s": 50.604,
+      "lag_s": 0.604,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-000",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.01,
+      "lag_s": 0.01,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-001",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.157,
+      "lag_s": 0.157,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-002",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.211,
+      "lag_s": 0.211,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-003",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.265,
+      "lag_s": 0.265,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-004",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.319,
+      "lag_s": 0.319,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-005",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.371,
+      "lag_s": 0.371,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-006",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.429,
+      "lag_s": 0.429,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-007",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.486,
+      "lag_s": 0.486,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-008",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.547,
+      "lag_s": 0.547,
+      "ok": true,
+      "error": ""
+    },
+    {
+      "task_id": "pilot-burst2-009",
+      "planned_offset_s": 60.0,
+      "actual_offset_s": 60.631,
+      "lag_s": 0.631,
+      "ok": true,
+      "error": ""
+    }
+  ],
+  "aborted": ""
+}

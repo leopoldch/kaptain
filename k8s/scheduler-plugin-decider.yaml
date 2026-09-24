@@ -1,0 +1,96 @@
+# A third arm: the same in-scheduler plugin, running the same policy, but calling it in
+# another process. It exists to measure the transport directly instead of deducing it --
+# the plugin times the call on the caller side, inside the scheduler.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kaptain-scheduler-decider-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    leaderElection:
+      leaderElect: false
+    profiles:
+      - schedulerName: kaptain-scheduler-decider
+        plugins:
+          score:
+            disabled:
+              - name: "*"
+            enabled:
+              - name: KaptainScore
+                weight: 1
+          preScore:
+            enabled:
+              - name: KaptainScore
+          reserve:
+            enabled:
+              - name: KaptainScore
+          postBind:
+            enabled:
+              - name: KaptainScore
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaptain-scheduler-decider
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kaptain-scheduler-decider }
+  template:
+    metadata:
+      labels: { app: kaptain-scheduler-decider }
+    spec:
+      serviceAccountName: kaptain-scheduler
+      containers:
+        - name: kube-scheduler
+          image: kaptain-scheduler:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/kubernetes/config.yaml
+            - --authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics
+            - --v=3
+          env:
+            # Same strategy as the other arms; the difference is where it runs.
+            - name: KAPTAIN_STRATEGY
+              value: "dummy-random"
+            - name: KAPTAIN_SEED
+              value: "7"
+            - name: KAPTAIN_DECIDER_URL
+              value: "http://kaptain-decider.kube-system.svc.cluster.local:8888/decide"
+            # Generous: a timeout firing would turn the measurement into fallbacks.
+            - name: KAPTAIN_DECIDER_TIMEOUT
+              value: "2s"
+            - name: RUN_ID
+              value: "unset"
+            - name: POLICY_VERSION
+              value: "unset"
+          ports:
+            - name: metrics
+              containerPort: 10259
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /readyz, port: 10259, scheme: HTTPS }
+      volumes:
+        - name: config
+          configMap:
+            name: kaptain-scheduler-decider-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaptain-scheduler-decider
+  namespace: kube-system
+  labels: { app: kaptain-scheduler-decider }
+spec:
+  selector: { app: kaptain-scheduler-decider }
+  ports:
+    - name: metrics
+      port: 10259
+      targetPort: 10259
