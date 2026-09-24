@@ -1,5 +1,6 @@
 # Helpers used by policies scoring a scheduler snapshot.
 
+FEATURE_ALLOCATABLE = "allocatable"
 FEATURE_REQUESTED = "requested"
 FEATURE_TELEMETRY = "telemetry"
 

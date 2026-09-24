@@ -70,7 +70,8 @@ func (p *Plugin) nodeSnapshot(node *framework.NodeInfo) snapshot.Node {
 			entry.UsedMilliCPU = usage.MilliCPU
 			entry.UsedMemoryBytes = usage.MemoryBytes
 			entry.TelemetryAgeSeconds = usage.AgeSeconds
-			entry.ClockSkewSeconds = usage.SkewSeconds
+			entry.SourceTimestampDeltaSeconds = usage.SourceTimestampDeltaSeconds
+			entry.SourceStaleSeconds = usage.SourceStaleSeconds
 		} else {
 			entry.Missing = append(entry.Missing, snapshot.FeatureTelemetry)
 			missingFeaturesTotal.WithLabelValues(snapshot.FeatureTelemetry).Inc()

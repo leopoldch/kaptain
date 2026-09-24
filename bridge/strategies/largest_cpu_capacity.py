@@ -1,4 +1,4 @@
-from snapshot import FEATURE_ALLOCATABLE
+from helpers import FEATURE_ALLOCATABLE
 
 from .base import SchedulingStrategy
 

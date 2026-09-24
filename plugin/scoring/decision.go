@@ -48,12 +48,18 @@ type Decision struct {
 	RequestsAgeMs  float64
 	TelemetryAgeMs float64
 
-	SnapshotMillis float64
-	DeciderMillis  float64
+	SnapshotMillis   float64
+	DeciderMillis    float64
+	MaxSourceStaleMs float64
+	MaxSourceDeltaMs float64
 
 	// FrameworkScores is what Score returns, computed once while all candidates are in hand.
 	FrameworkScores map[string]int64
 	TieCount        int
+
+	// FallbackBlindNodes are the candidates the fallback ranked without their allocatable
+	// or requested resources, which it reads as zero because it must still answer.
+	FallbackBlindNodes []string
 
 	// Winners is every node that shares the top score. kube-scheduler picks among them at
 	// random, so a binding on any of them conformed to the policy; only the tie-break
@@ -131,8 +137,14 @@ func (p *Plugin) logDecision(s *snapshot.Snapshot, d *Decision, totalMillis floa
 			}
 			return nil
 		}(),
-		"decider_strategy": nullable(d.DeciderStrategy),
-		"duration_ms":      round(totalMillis),
+		"decider_strategy":     nullable(d.DeciderStrategy),
+		"fallback_blind_nodes": d.FallbackBlindNodes,
+		// The freshness of what the decision actually ran on, kept here because the
+		// snapshot itself is not persisted: "this placement used a 27 s old measurement"
+		// has to be answerable after the run.
+		"max_source_stale_ms":           round(d.MaxSourceStaleMs),
+		"max_source_timestamp_delta_ms": round(d.MaxSourceDeltaMs),
+		"duration_ms":                   round(totalMillis),
 		// Every candidate's raw score, not only the winner's: without them a surprising
 		// placement cannot be explained after the fact.
 		"effective_scores": d.Scores,

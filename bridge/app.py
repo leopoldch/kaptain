@@ -35,19 +35,34 @@ def prometheus_metrics():
 def decide(snapshot: dict):
     # `strategy` names what actually scored, not what the caller believes is deployed here:
     # the plugin records it, so a run cannot report a policy that never ran.
+    # The line has to survive the failure it exists to explain: a policy that raises is
+    # exactly the decision someone will come back to, and the plugin only records that the
+    # call failed. Timed and logged on both paths, with the status on the histogram.
     started = time.perf_counter()
-    scores = strategy.scores(snapshot)
+    try:
+        scores = strategy.scores(snapshot)
+    except Exception:
+        elapsed = time.perf_counter() - started
+        decider_metrics.handler_duration.labels("decide", "error").observe(elapsed)
+        log.exception(json.dumps({
+            "decision_id": snapshot.get("decision_id", ""),
+            "run_id": snapshot.get("run_id", "unset"),
+            "strategy": strategy.name,
+            "duration_ms": round(elapsed * 1000, 3),
+            "status": "error",
+            "event": "decide",
+        }))
+        raise
+
     elapsed = time.perf_counter() - started
-    decider_metrics.handler_duration.labels("decide").observe(elapsed)
-    # One line per decision, keyed by the id the plugin generated. The histogram above is
-    # aggregated, so without this a single decision cannot be followed from the scheduler
-    # into the policy and back out to the binding.
+    decider_metrics.handler_duration.labels("decide", "ok").observe(elapsed)
     log.info(json.dumps({
         "decision_id": snapshot.get("decision_id", ""),
         "run_id": snapshot.get("run_id", "unset"),
         "strategy": strategy.name,
         "scores": scores,
         "duration_ms": round(elapsed * 1000, 3),
+        "status": "ok",
         "event": "decide",
     }))
     return {"scores": scores, "strategy": strategy.name}

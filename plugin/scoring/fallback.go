@@ -10,6 +10,22 @@ import (
 // A fallback is a decision of the method under test: logged, counted, kept in the results.
 const FallbackName = "least-allocated-requests"
 
+// fallbackIncomplete reports the candidates whose allocatable or requested resources are
+// missing. The fallback still has to answer -- it runs when something else already failed
+// -- but a ranking built partly on zeros must say so rather than pass for a measurement.
+func fallbackIncomplete(s *snapshot.Snapshot) []string {
+	var blind []string
+	for _, n := range s.Nodes {
+		for _, feature := range n.Missing {
+			if feature == snapshot.FeatureAllocatable || feature == snapshot.FeatureRequested {
+				blind = append(blind, n.Name)
+				break
+			}
+		}
+	}
+	return blind
+}
+
 func fallbackNode(s *snapshot.Snapshot) string {
 	nodes := append([]snapshot.Node(nil), s.Nodes...)
 	sort.Slice(nodes, func(i, j int) bool {

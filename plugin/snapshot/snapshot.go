@@ -43,11 +43,16 @@ type Node struct {
 	RequestsAgeSeconds  float64 `json:"requests_age_seconds,omitempty"`
 	TelemetryAgeSeconds float64 `json:"telemetry_age_seconds,omitempty"`
 
-	// ClockSkewSeconds is this node's kubelet clock against ours for the same sample. It
-	// is not part of the age; it is there so a run on separate machines can show whether
-	// the clocks were synchronised at all.
-	ClockSkewSeconds float64  `json:"clock_skew_seconds,omitempty"`
-	Missing          []string `json:"missing,omitempty"`
+	// SourceTimestampDeltaSeconds is our receipt time minus the kubelet's timestamp. It
+	// mixes clock offset with how old the sample already was and with the round trip, so
+	// it is an indicator, never a measurement of skew.
+	SourceTimestampDeltaSeconds float64 `json:"source_timestamp_delta_seconds,omitempty"`
+
+	// SourceStaleSeconds is how long the kubelet has been repeating the same measurement
+	// timestamp: a frozen stats pipeline answers happily, and cache age cannot see it.
+	SourceStaleSeconds float64 `json:"source_stale_seconds,omitempty"`
+
+	Missing []string `json:"missing,omitempty"`
 }
 
 type Snapshot struct {

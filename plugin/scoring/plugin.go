@@ -59,9 +59,10 @@ func New(ctx context.Context, _ runtime.Object, handle framework.Handle) (framew
 			return nil, fmt.Errorf("telemetry collector %q needs a scheduler handle", config.Telemetry)
 		}
 		source, err := telemetry.Open(ctx, config.Telemetry, telemetry.Options{
-			Config:   handle.KubeConfig(),
-			Interval: config.TelemetryEvery,
-			MaxAge:   config.TelemetryMaxAge,
+			Config:         handle.KubeConfig(),
+			Interval:       config.TelemetryEvery,
+			MaxAge:         config.TelemetryMaxAge,
+			MaxSourceStale: config.TelemetryMaxSourceStale,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("telemetry: %w", err)
@@ -163,6 +164,7 @@ func (p *Plugin) PreScore(ctx context.Context, state *framework.CycleState, pod 
 	decision := p.decide(ctx, current)
 	decision.ID = decisionID
 	decision.RequestsAgeMs, decision.TelemetryAgeMs = oldestAges(current)
+	decision.MaxSourceStaleMs, decision.MaxSourceDeltaMs = oldestSources(current)
 	decision.SnapshotMillis = snapshotMillis
 	decision.CandidateCount = len(current.Nodes)
 
@@ -213,7 +215,9 @@ func (p *Plugin) decide(ctx context.Context, current *snapshot.Snapshot) *Decisi
 	// decision that is the only record of what the model actually said.
 	decision.PolicyScores = scores
 	if decision.Fallback() {
+		decision.FallbackBlindNodes = fallbackIncomplete(current)
 		klog.V(2).InfoS("kaptain fallback", "reason", decision.FallbackReason, "error", err,
+			"blindNodes", decision.FallbackBlindNodes,
 			"strategy", decision.Strategy, "fallbackStrategy", FallbackName)
 		scores = fallbackScores(current)
 	}
@@ -284,6 +288,16 @@ func oldestAges(current *snapshot.Snapshot) (requests, telemetry float64) {
 		telemetry = math.Max(telemetry, node.TelemetryAgeSeconds*1000)
 	}
 	return requests, telemetry
+}
+
+// oldestSources reports the stalest measurement source behind this decision: how long the
+// kubelet has been repeating a timestamp, and how far its clock sat from ours.
+func oldestSources(current *snapshot.Snapshot) (stale, delta float64) {
+	for _, node := range current.Nodes {
+		stale = math.Max(stale, node.SourceStaleSeconds*1000)
+		delta = math.Max(delta, node.SourceTimestampDeltaSeconds*1000)
+	}
+	return stale, delta
 }
 
 func millis(since time.Time) float64 {

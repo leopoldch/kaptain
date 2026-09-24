@@ -80,8 +80,14 @@ make metrics-decider   # kaptain_decider_* on the decider
 
 Plugin environment: `KAPTAIN_DECIDER_URL` (**required**) and `KAPTAIN_DECIDER_TIMEOUT`,
 `KAPTAIN_STRATEGY` (the run's declared identity, and the metric label), `KAPTAIN_SEED`,
-`KAPTAIN_TELEMETRY` (`kubelet` or `off`), its refresh interval and max age, `RUN_ID`,
+`KAPTAIN_TELEMETRY` (`kubelet` or `off`) with `KAPTAIN_TELEMETRY_REFRESH`,
+`KAPTAIN_TELEMETRY_MAX_AGE` and `KAPTAIN_TELEMETRY_MAX_SOURCE_STALE`, `RUN_ID`,
 `POLICY_VERSION`.
+
+The two telemetry limits are not the same thing. `MAX_AGE` bounds how long ago we received a
+sample; `MAX_SOURCE_STALE` bounds how long the kubelet has been repeating one measurement
+timestamp. A frozen stats pipeline keeps answering, so every poll refreshes the first and
+only the second notices.
 
 Measured node usage comes directly from each kubelet's `/stats/summary`, through the API
 server proxy. The scheduler caches these samples in the background; a scheduling decision
@@ -129,9 +135,12 @@ k8s/         manifests
 
 **A fallback is a result.** A policy that crashes, times out, or names a node outside the
 candidate list must never become an invisible random baseline. The plugin validates every
-answer and falls back explicitly — highest free-request ratio, then most allocatable CPU,
-then node name. That rule is **in Go, because it runs exactly when the decider is what
-failed**. It is logged, counted, and kept in the results.
+answer and falls back explicitly — highest mean remaining CPU/memory request ratio once the
+incoming Pod is added, then allocatable CPU, then node name. That is the same definition as
+the `least-allocated` strategy, so the fallback matches the name it carries. The rule lives
+**in Go, because it runs exactly when the decider is what failed**. It is logged, counted,
+and kept in the results; when it ranked on resources a node reported missing, the decision
+line names those nodes in `fallback_blind_nodes`.
 
 **Absence is declared.** A value that cannot be read is `missing`, never zero. Two ages,
 never one: requested resources and measured usage go stale at different rates.

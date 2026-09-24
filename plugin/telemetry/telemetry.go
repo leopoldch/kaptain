@@ -20,13 +20,20 @@ type Usage struct {
 	MilliCPU    int64
 	MemoryBytes int64
 
-	// AgeSeconds is measured on our clock, from when the sample arrived.
+	// AgeSeconds is how long ago this sample reached us, on our clock. It is the cache age,
+	// not the age of the measurement: the kubelet may keep returning the same numbers.
 	AgeSeconds float64
 
-	// SkewSeconds is our clock minus the kubelet's for the same sample. It is not an age:
-	// it is how far apart the two machines think they are, and it only means anything once
-	// the nodes are separate machines.
-	SkewSeconds float64
+	// SourceTimestampDeltaSeconds is our receipt time minus the kubelet's timestamp for the
+	// same sample. It is NOT clock skew: it also contains how old the sample already was
+	// inside the kubelet, the round trip and the decoding. Two perfectly synchronised
+	// machines still show a tenth of a second here. Report it as what it is.
+	SourceTimestampDeltaSeconds float64
+
+	// SourceStaleSeconds is how long the kubelet has been returning a measurement with the
+	// same timestamp. A frozen stats pipeline answers happily forever, and cache age alone
+	// would call every one of those answers fresh.
+	SourceStaleSeconds float64
 }
 
 type sample struct {
@@ -39,6 +46,10 @@ type sample struct {
 	// measuredAt is kept because the gap between the two is what reveals the skew.
 	measuredAt time.Time
 	receivedAt time.Time
+
+	// firstSeenAt is when this measuredAt was first observed, so an unchanging kubelet
+	// timestamp becomes visible instead of being refreshed away on every poll.
+	firstSeenAt time.Time
 }
 
 type Source interface {
@@ -54,7 +65,13 @@ const (
 type Options struct {
 	Config   *restclient.Config
 	Interval time.Duration
-	MaxAge   time.Duration
+
+	// MaxAge bounds how long ago we received a sample. MaxSourceStale bounds how long the
+	// kubelet has been repeating the same measurement timestamp: a frozen stats pipeline
+	// keeps answering, so every poll refreshes MaxAge and only this catches it. They are
+	// separate because an unchanged timestamp for a few seconds is perfectly normal.
+	MaxAge         time.Duration
+	MaxSourceStale time.Duration
 }
 
 func Open(ctx context.Context, collector string, opts Options) (Source, error) {
@@ -69,9 +86,10 @@ func Open(ctx context.Context, collector string, opts Options) (Source, error) {
 }
 
 type client struct {
-	api      kubernetes.Interface
-	interval time.Duration
-	maxAge   time.Duration
+	api            kubernetes.Interface
+	interval       time.Duration
+	maxAge         time.Duration
+	maxSourceStale time.Duration
 
 	mutex   sync.RWMutex
 	samples map[string]sample
@@ -83,10 +101,11 @@ func newKubelet(ctx context.Context, opts Options) (Source, error) {
 		return nil, err
 	}
 	source := &client{
-		api:      api,
-		interval: opts.Interval,
-		maxAge:   opts.MaxAge,
-		samples:  map[string]sample{},
+		api:            api,
+		interval:       opts.Interval,
+		maxAge:         opts.MaxAge,
+		maxSourceStale: opts.MaxSourceStale,
+		samples:        map[string]sample{},
 	}
 	if err := source.refresh(ctx); err != nil {
 		klog.ErrorS(err, "kaptain telemetry: first kubelet refresh failed, starting without samples")
@@ -147,6 +166,12 @@ func (c *client) refresh(ctx context.Context) error {
 		}
 
 		if entry, ok := sampleFromSummary(summary); ok {
+			// A kubelet that keeps answering with the same measurement timestamp is not
+			// producing fresh numbers. Carry the instant that timestamp first appeared, so
+			// the staleness of the source survives a poll that only refreshed our clock.
+			if before, seen := previous[node.Name]; seen && before.measuredAt.Equal(entry.measuredAt) {
+				entry.firstSeenAt = before.firstSeenAt
+			}
 			updated[node.Name] = entry
 		} else {
 			klog.V(2).InfoS("kaptain telemetry: kubelet summary lacks CPU or memory usage", "node", node.Name)
@@ -173,11 +198,13 @@ func sampleFromSummary(summary statsapi.Summary) (sample, bool) {
 	if memory.Time.Time.Before(measuredAt) {
 		measuredAt = memory.Time.Time
 	}
+	now := time.Now()
 	return sample{
 		milliCPU:    int64(*cpu.UsageNanoCores / 1_000_000),
 		memoryBytes: int64(*memory.WorkingSetBytes),
 		measuredAt:  measuredAt,
-		receivedAt:  time.Now(),
+		receivedAt:  now,
+		firstSeenAt: now,
 	}, true
 }
 
@@ -193,13 +220,21 @@ func (c *client) Get(node string) (Usage, bool) {
 	if age < 0 {
 		age = 0
 	}
-	if age > c.maxAge {
+	sourceStale := entry.receivedAt.Sub(entry.firstSeenAt)
+	if sourceStale < 0 {
+		sourceStale = 0
+	}
+	// Refused on either count: a sample we have not refreshed, or one the kubelet has
+	// stopped moving. Reporting the second without acting on it would leave least-used
+	// ranking on a measurement frozen an hour ago.
+	if age > c.maxAge || (c.maxSourceStale > 0 && sourceStale > c.maxSourceStale) {
 		return Usage{}, false
 	}
 	return Usage{
-		MilliCPU:    entry.milliCPU,
-		MemoryBytes: entry.memoryBytes,
-		AgeSeconds:  age.Seconds(),
-		SkewSeconds: entry.receivedAt.Sub(entry.measuredAt).Seconds(),
+		MilliCPU:                    entry.milliCPU,
+		MemoryBytes:                 entry.memoryBytes,
+		AgeSeconds:                  age.Seconds(),
+		SourceTimestampDeltaSeconds: entry.receivedAt.Sub(entry.measuredAt).Seconds(),
+		SourceStaleSeconds:          sourceStale.Seconds(),
 	}, true
 }

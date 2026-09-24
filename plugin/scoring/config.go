@@ -22,8 +22,12 @@ type Config struct {
 	Telemetry       string
 	TelemetryEvery  time.Duration
 	TelemetryMaxAge time.Duration
-	RunID           string
-	PolicyVersion   string
+
+	// TelemetryMaxSourceStale bounds how long the kubelet may repeat one measurement
+	// timestamp before its samples stop counting as usable.
+	TelemetryMaxSourceStale time.Duration
+	RunID                   string
+	PolicyVersion           string
 
 	// InstanceID distinguishes one scheduler process from the next. RUN_ID survives a
 	// restart and the decision counter does not, so without this two processes of the same
@@ -36,7 +40,10 @@ const (
 	defaultDeciderTimeout  = 50 * time.Millisecond
 	defaultTelemetryEvery  = 2 * time.Second
 	defaultTelemetryMaxAge = 30 * time.Second
-	unset                  = "unset"
+	// Longer than MaxAge on purpose: an unchanged kubelet timestamp across a couple of
+	// polls is normal, an unchanged one across a minute is a frozen pipeline.
+	defaultTelemetryMaxSourceStale = 60 * time.Second
+	unset                          = "unset"
 )
 
 func configFromEnv() (Config, error) {
@@ -65,9 +72,11 @@ func configFromEnv() (Config, error) {
 		Telemetry:       env("KAPTAIN_TELEMETRY", telemetry.Kubelet),
 		TelemetryEvery:  duration("KAPTAIN_TELEMETRY_REFRESH", defaultTelemetryEvery),
 		TelemetryMaxAge: duration("KAPTAIN_TELEMETRY_MAX_AGE", defaultTelemetryMaxAge),
-		RunID:           env("RUN_ID", unset),
-		PolicyVersion:   env("POLICY_VERSION", unset),
-		InstanceID:      instanceID(),
+		TelemetryMaxSourceStale: duration("KAPTAIN_TELEMETRY_MAX_SOURCE_STALE",
+			defaultTelemetryMaxSourceStale),
+		RunID:         env("RUN_ID", unset),
+		PolicyVersion: env("POLICY_VERSION", unset),
+		InstanceID:    instanceID(),
 	}
 	if len(errs) > 0 {
 		return config, fmt.Errorf("%s", strings.Join(errs, "; "))

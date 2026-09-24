@@ -66,7 +66,7 @@ var (
 	cacheAgeSeconds = metrics.NewHistogramVec(&metrics.HistogramOpts{
 		Subsystem:      subsystem,
 		Name:           "cache_age_seconds",
-		Help:           "Age of the measurements used in a snapshot, by source.",
+		Help:           "Age of cached inputs since the scheduler received them, by source.",
 		Buckets:        []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 300},
 		StabilityLevel: metrics.ALPHA,
 	}, []string{"source"})
@@ -74,7 +74,7 @@ var (
 	boundMismatchTotal = metrics.NewCounterVec(&metrics.CounterOpts{
 		Subsystem:      subsystem,
 		Name:           "bound_mismatch_total",
-		Help:           "Pods bound to a node other than the intended one, which happens when top-scoring nodes tie.",
+		Help:           "Pods bound to a node outside the policy's top-scoring winner set.",
 		StabilityLevel: metrics.ALPHA,
 	}, []string{"strategy"})
 

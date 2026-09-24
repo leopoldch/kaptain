@@ -10,7 +10,7 @@ _SECONDS = tuple(0.0001 * 2 ** power for power in range(14))
 
 handler_duration = Histogram(f"{SUBSYSTEM}_handler_duration_seconds",
                              "Time spent computing policy scores, excluding HTTP handling.",
-                             ["endpoint"], buckets=_SECONDS, registry=registry)
+                             ["endpoint", "status"], buckets=_SECONDS, registry=registry)
 
 
 def render() -> bytes:
