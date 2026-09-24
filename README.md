@@ -1,4 +1,18 @@
-# Kaptain
+# Kaptain — archive/extender
+
+**This branch is the HTTP scheduler extender, alone and frozen.** The Go Scheduling
+Framework plugin was removed here; it is the only integration on `mainline`, where
+development continues. Nothing on this branch is maintained.
+
+What went with the plugin: `plugin/`, `k8s/scheduler-plugin*.yaml`,
+`k8s/demo-workload-plugin.yaml`, `docs/plugin-design.md`, and the `*-plugin` Make targets.
+Two Go tools went with them and have no replacement here: `make lint-manifests`
+(`plugin/hack/parsecheck`) and `make quantities` (`plugin/hack/qcheck`, which generated
+`testdata/quantities.json` — the file is kept, it can no longer be regenerated here).
+
+The documentation below, and everything under `docs/`, still describes the two-path
+comparison. It is kept as the record of that comparison, not as a description of this
+branch.
 
 Kaptain compares two ways of plugging ML/RL/LLM placement strategies into a real
 Kubernetes scheduler path:
