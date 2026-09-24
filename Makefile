@@ -3,8 +3,7 @@ IMAGE        := kaptain-extender:dev
 K8S_VERSION  := v1.31.0
 
 .PHONY: up build load deploy demo logs verify down all \
-        demo-default metrics-extender test test-extender \
-        replay-extender smoke-extender pilot analyse test-experiments
+        demo-default metrics-extender test test-extender replay-extender
 
 # --- Cluster -----------------------------------------------------------------
 
@@ -70,12 +69,6 @@ replay-extender:
 	@python3 -c "import json,sys; print(json.dumps(json.load(open('$(SNAPSHOT)')).get('snapshot') or json.load(open('$(SNAPSHOT)'))))" \
 		| curl -sS -X POST -H 'Content-Type: application/json' --data-binary @- \
 		  http://127.0.0.1:8888/replay
-
-	cd experiments && python3 analyse.py runs --out summary.csv
-
-# The runner itself uses only the standard library; pytest comes from uv for the tests.
-test-experiments:
-	cd experiments && uv run --with pytest python -m pytest test_experiments.py -q
 
 # --- Tests -------------------------------------------------------------------
 
