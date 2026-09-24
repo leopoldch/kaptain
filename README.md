@@ -5,14 +5,14 @@ Framework plugin was removed here; it is the only integration on `mainline`, whe
 development continues. Nothing on this branch is maintained.
 
 What went with the plugin: `plugin/`, `k8s/scheduler-plugin*.yaml`,
-`k8s/demo-workload-plugin.yaml`, `docs/plugin-design.md`, and the `*-plugin` Make targets.
+`k8s/demo-workload-plugin.yaml`, and the `*-plugin` Make targets.
 Two Go tools went with them and have no replacement here: `make lint-manifests`
 (`plugin/hack/parsecheck`) and `make quantities` (`plugin/hack/qcheck`, which generated
 `testdata/quantities.json` — the file is kept, it can no longer be regenerated here).
 
-The documentation below, and everything under `docs/`, still describes the two-path
-comparison. It is kept as the record of that comparison, not as a description of this
-branch.
+`docs/` and `experiments/` are not committed here either; they were removed from every
+branch. The README below still describes the two-path comparison, because that is what this
+branch is.
 
 Kaptain compares two ways of plugging ML/RL/LLM placement strategies into a real
 Kubernetes scheduler path:

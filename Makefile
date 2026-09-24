@@ -71,32 +71,6 @@ replay-extender:
 		| curl -sS -X POST -H 'Content-Type: application/json' --data-binary @- \
 		  http://127.0.0.1:8888/replay
 
-# --- Pilot --------------------------------------------------------------------
-# Protocol: docs/experiments/pilot-integration-cost.md. The plugin arm lives on the
-# plugin branch; here only the extender arm can be run.
-
-PLAN     ?= experiments/plan.json
-RUNS     ?= experiments/runs
-SCENARIO ?= A-light
-
-$(PLAN):
-	cd experiments && python3 plan.py plan.json
-
-# A handful of pods on one arm, to check the path actually places before measuring anything.
-smoke-extender: $(PLAN)
-	cd experiments && python3 -c "from plan import steady_then_bursts; \
-	  steady_then_bursts(name='smoke', steady_count=6, steady_interval_s=0.5, bursts=1, burst_size=4).write(__import__('pathlib').Path('smoke.json'))"
-	cd experiments && python3 run.py --arm extender --plan smoke.json --out runs/smoke-extender --scenario smoke
-
-PAIRS ?= 1
-pilot: $(PLAN)
-	@cd experiments && for pair in $$(seq 1 $(PAIRS)); do \
-	  printf '\n== run %s/%s (extender) ==\n' "$$pair" "$(PAIRS)"; \
-	  python3 run.py --arm extender --plan plan.json --scenario $(SCENARIO) --pair $$pair \
-	    --out runs/$(SCENARIO)-$$pair-extender || exit 1; \
-	done
-
-analyse:
 	cd experiments && python3 analyse.py runs --out summary.csv
 
 # The runner itself uses only the standard library; pytest comes from uv for the tests.

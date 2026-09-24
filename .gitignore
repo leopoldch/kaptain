@@ -27,3 +27,6 @@ _parsecheck
 experiments/runs/
 experiments/summary.csv
 experiments/smoke.json
+
+# Design documents: kept locally, not committed for now.
+docs/
