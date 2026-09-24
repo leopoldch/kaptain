@@ -1,19 +1,22 @@
+from helpers import FEATURE_ALLOCATABLE
+
 from .base import SchedulingStrategy
-
-MILLICORES_PER_CORE = 1000
-
-
-def _millicores(cpu: str) -> int:
-    return int(cpu[:-1]) if cpu.endswith("m") else int(float(cpu) * MILLICORES_PER_CORE)
-
-
-def _allocatable_cpu(node: dict) -> int:
-    return _millicores(node.get("status", {}).get("allocatable", {}).get("cpu", "0"))
 
 
 class LargestCPUCapacity(SchedulingStrategy):
-    name = "largest-cpu-capacity"
+    """Ranks on static allocatable CPU: it does not spread and ignores what is running."""
 
-    def select(self, pod: dict, nodes: list[dict]) -> str:
-        best = max(nodes, key=_allocatable_cpu)
-        return best["metadata"]["name"]
+    name = "largest-cpu-capacity"
+    requires = frozenset({FEATURE_ALLOCATABLE})
+
+    def scores(self, snapshot: dict) -> dict[str, float]:
+        if not snapshot["nodes"]:
+            raise ValueError("no candidate nodes")
+        out = {}
+        for node in snapshot["nodes"]:
+            # A node whose allocatable could not be read reports it missing; ranking it at
+            # zero would put it last on a value nobody measured.
+            if FEATURE_ALLOCATABLE in node.get("missing", []):
+                raise ValueError(f"node {node['name']!r} has no allocatable capacity")
+            out[node["name"]] = float(node["allocatable_millicpu"])
+        return out

@@ -15,3 +15,18 @@ venv/
 
 # Env
 .env
+
+# Go
+/tmp/
+*.test
+
+# Local artifacts
+_parsecheck
+
+# Experiment outputs
+
+# Design documents: kept locally, not committed for now.
+docs/
+
+# Raw pilot runs: 29 MB of Prometheus dumps, kept locally.
+experiments/
