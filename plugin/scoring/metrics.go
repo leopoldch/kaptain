@@ -29,7 +29,7 @@ var (
 	deciderDuration = metrics.NewHistogramVec(&metrics.HistogramOpts{
 		Subsystem:      subsystem,
 		Name:           "decider_duration_seconds",
-		Help:           "Time spent in the local strategy or in the external decider call.",
+		Help:           "Time spent on the external decider call, as the scheduler sees it (serialisation and HTTP included), by outcome.",
 		Buckets:        metrics.ExponentialBuckets(0.0001, 2, 14),
 		StabilityLevel: metrics.ALPHA,
 	}, []string{"strategy", "status"})

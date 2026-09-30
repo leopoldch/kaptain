@@ -32,9 +32,8 @@ spec:
           image: kaptain-decider:dev   # local image loaded into kind
           imagePullPolicy: IfNotPresent
           env:
-            # MUST match KAPTAIN_STRATEGY in scheduler-plugin-decider.yaml: comparing the
-            # two plugin arms under different strategies measures the policy, not the
-            # transport.
+            # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: the plugin refuses to
+            # start, and refuses the decision, if the two disagree.
             - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
               value: "dummy-random"
           ports:

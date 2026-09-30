@@ -40,7 +40,8 @@ type Decision struct {
 	Intended string
 	Strategy string
 
-	// DeciderStrategy is what the remote policy called itself, empty when it ran locally.
+	// DeciderStrategy is what the remote policy called itself, empty when the call failed
+	// before the decider answered.
 	DeciderStrategy string
 
 	FallbackReason string

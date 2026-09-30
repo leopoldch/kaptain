@@ -7,7 +7,6 @@ class LargestCPUCapacity(SchedulingStrategy):
     """Ranks on static allocatable CPU: it does not spread and ignores what is running."""
 
     name = "largest-cpu-capacity"
-    requires = frozenset({FEATURE_ALLOCATABLE})
 
     def scores(self, snapshot: dict) -> dict[str, float]:
         if not snapshot["nodes"]:
