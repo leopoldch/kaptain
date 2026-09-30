@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kaptain-scheduler-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1
+    kind: KubeSchedulerConfiguration
+    # Disabled: otherwise this scheduler waits on the "kube-scheduler" lock already held
+    # by the cluster's built-in scheduler and stays idle.
+    leaderElection:
+      leaderElect: false
+    profiles:
+      - schedulerName: kaptain-scheduler
+        plugins:
+          # The native scorers are switched off so the strategy is the policy, not a
+          # nudge on top of the default one.
+          # The order matters -- "*" disables the defaults, then KaptainScore is added.
+          score:
+            disabled:
+              - name: "*"
+            enabled:
+              - name: KaptainScore
+                weight: 1
+          # PreScore is its own extension point: disabling the native Score plugins leaves
+          # NodeAffinity, TaintToleration, PodTopologySpread, InterPodAffinity and
+          # VolumeBinding still running their PreScore. Their work would land in the cost we
+          # are trying to measure.
+          preScore:
+            disabled:
+              - name: "*"
+            enabled:
+              - name: KaptainScore
+          # Without this the actual placement is never logged: PostBind is what records
+          # the node kube-scheduler really bound, which matters when scores tie.
+          postBind:
+            enabled:
+              - name: KaptainScore
+    # Filter is untouched on purpose: admissibility stays Kubernetes' job. The plugin
+    # expresses its decision as a score, never as a constraint.

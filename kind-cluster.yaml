@@ -1,6 +1,11 @@
-# Local multi-node cluster. Labels simulate hardware heterogeneity
-# (useful for the "heterogeneous workloads" scenarios / placement features).
-# Kubernetes version pinned to match the scheduler image (v1.31.0).
+# Local multi-node cluster, for wiring and decision-cost pilots only.
+#
+# Every node here is a container on the same physical machine: they share CPU, memory
+# bandwidth, disk and network. The hw-class and cpu-gen labels below are COSMETIC -- they
+# create no hardware difference whatsoever, and must never be used to claim a heterogeneity
+# result. Main results require separate Linux VMs, ideally one per Kubernetes node.
+#
+# Kubernetes version pinned to match the scheduler image and the plugin (v1.31.0).
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
@@ -8,10 +13,10 @@ nodes:
     image: kindest/node:v1.31.0
   - role: worker
     image: kindest/node:v1.31.0
-    labels: { hw-class: "fast", cpu-gen: "new" }
+    labels: { hw-class: "fast", cpu-gen: "new" }   # cosmetic label, identical hardware
   - role: worker
     image: kindest/node:v1.31.0
-    labels: { hw-class: "slow", cpu-gen: "old" }
+    labels: { hw-class: "slow", cpu-gen: "old" }   # cosmetic label, identical hardware
   - role: worker
     image: kindest/node:v1.31.0
-    labels: { hw-class: "slow", cpu-gen: "old" }
+    labels: { hw-class: "slow", cpu-gen: "old" }   # cosmetic label, identical hardware

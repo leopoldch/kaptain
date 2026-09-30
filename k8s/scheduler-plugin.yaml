@@ -1,0 +1,161 @@
+# The integration: a kube-scheduler built with the KaptainScore plugin, named
+# "kaptain-scheduler". The default Kubernetes scheduler stays untouched beside it, as the
+# native reference. The policy itself runs in the decider (k8s/decider.yaml), never here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kaptain-scheduler
+  namespace: kube-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: kaptain-scheduler }
+  template:
+    metadata:
+      labels: { app: kaptain-scheduler }
+    spec:
+      # Kaptain must not run on a node it schedules onto. The kubelet summary reports the
+      # whole node's usage, so a scheduler or a decider sitting on a worker inflates that
+      # worker's measured load, and least-used would then avoid a node for no reason but
+      # Kaptain being there. The control plane is tainted in kind and excluded from the
+      # candidates, which is exactly where this belongs.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: ""
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      serviceAccountName: kaptain-scheduler
+      containers:
+        - name: kube-scheduler
+          image: kaptain-scheduler:dev   # local image loaded into kind
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config=/etc/kubernetes/config.yaml
+            # Let Prometheus scrape the plugin metrics without a token.
+            - --authorization-always-allow-paths=/healthz,/readyz,/livez,/metrics
+            - --v=3
+          env:
+            # The run's declared identity, and the metric label. It MUST match STRATEGY in
+            # decider.yaml: the plugin refuses to start on a disagreement, and refuses the
+            # decision if they come to disagree while running.
+            - name: KAPTAIN_STRATEGY
+              value: "dummy-random"
+            - name: KAPTAIN_SEED          # seeded draw, so dummy-random is reproducible
+              value: "7"
+            # Required: every policy runs out of process. The plugin refuses to start without it.
+            - name: KAPTAIN_DECIDER_URL
+              value: "http://kaptain-decider.kube-system.svc.cluster.local:8888/decide"
+            # Generous: a timeout firing would turn a measurement into fallbacks.
+            - name: KAPTAIN_DECIDER_TIMEOUT
+              value: "2s"
+            # Measured node usage, read directly from kubelet summaries via the API server.
+            - name: KAPTAIN_TELEMETRY
+              value: "kubelet"
+            - name: KAPTAIN_TELEMETRY_REFRESH
+              value: "2s"
+            # Downward API: the decision id carries it, so a decision can be traced to the
+            # process that took it -- and two processes of one run cannot collide.
+            - name: POD_NAME
+              valueFrom:
+                fieldRef: { fieldPath: metadata.name }
+            - name: RUN_ID
+              value: "unset"
+            - name: POLICY_VERSION
+              value: "unset"
+          ports:
+            - name: metrics
+              containerPort: 10259
+          volumeMounts:
+            - name: config
+              mountPath: /etc/kubernetes
+              readOnly: true
+          readinessProbe:
+            httpGet: { path: /readyz, port: 10259, scheme: HTTPS }
+      volumes:
+        - name: config
+          configMap:
+            name: kaptain-scheduler-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kaptain-scheduler
+  namespace: kube-system
+  labels: { app: kaptain-scheduler }
+spec:
+  selector: { app: kaptain-scheduler }
+  ports:
+    - name: metrics
+      port: 10259
+      targetPort: 10259
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kaptain-scheduler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kaptain-scheduler-as-kube-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: kaptain-scheduler
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kaptain-scheduler-as-volume-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:volume-scheduler
+subjects:
+  - kind: ServiceAccount
+    name: kaptain-scheduler
+    namespace: kube-system
+---
+# Kubelet summary API access via the API server proxy. Prototype-only: nodes/proxy is broad.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kaptain-scheduler-kubelet-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kaptain-scheduler-kubelet-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kaptain-scheduler-kubelet-reader
+subjects:
+  - kind: ServiceAccount
+    name: kaptain-scheduler
+    namespace: kube-system
+---
+# Read the auth configmap (silences startup warnings).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kaptain-scheduler-auth-reader
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: kaptain-scheduler
+    namespace: kube-system
