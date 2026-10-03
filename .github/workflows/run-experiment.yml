@@ -48,6 +48,11 @@ jobs:
         with:
           persist-credentials: false
 
+      # Before the deployment: its own check refuses while pods of a killed run remain.
+      - name: Remove leftover experiments
+        shell: bash
+        run: python3 workloads/kexp.py cleanup
+
       - name: Deploy policy
         if: inputs.strategy != 'current'
         shell: bash

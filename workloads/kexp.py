@@ -233,7 +233,7 @@ def running_images():
 def create_namespace(namespace):
     namespace_object = {"apiVersion": "v1", "kind": "Namespace",
                         "metadata": {"name": namespace, "labels": {EXPERIMENT_LABEL: "true"}}}
-    # Workloads need no network: deny everything, so a compromised image cannot reach the cluster.
+    # Workloads need no network: deny everything. Not every node enforces it (see README).
     deny_all = {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
                 "metadata": {"name": "deny-all", "namespace": namespace},
                 "spec": {"podSelector": {}, "policyTypes": ["Ingress", "Egress"]}}
@@ -244,6 +244,18 @@ def create_namespace(namespace):
 def delete_experiment_namespaces():
     # Waits, so that the next run never starts while previous pods are still terminating.
     kubectl("delete", "namespace", "-l", EXPERIMENT_LABEL, "--wait=true", "--timeout=300s")
+
+
+def check_idle(workers):
+    """Refuse to measure on top of other work: it would load the nodes and sway resource-aware policies."""
+    busy = []
+    for pod in json.loads(kubectl("get", "pods", "--all-namespaces", "-o", "json"))["items"]:
+        if pod["metadata"]["namespace"] == "kube-system" or pod["status"]["phase"] in ("Succeeded", "Failed"):
+            continue
+        if pod["spec"].get("nodeName") in workers or pod["spec"].get("schedulerName") == "kaptain-scheduler":
+            busy.append(f"{pod['metadata']['namespace']}/{pod['metadata']['name']}")
+    if busy:
+        raise RuntimeError(f"cluster not idle, stop these first: {' '.join(busy)}")
 
 
 def collect(out, namespace, started_at):
@@ -278,8 +290,9 @@ def run(name, out_root):
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a cancelled job still cleans up
     delete_experiment_namespaces()  # left over by a run that was killed
-    create_namespace(namespace)
+    check_idle(nodes)
     try:
+        create_namespace(namespace)
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
         meta["status"] = "complete" if complete else "timeout"
     finally:
@@ -312,6 +325,10 @@ def pod_times(pod):
         "finished": finished,
         "completion": finished - created,
     }
+
+
+def short(digest):
+    return digest.split(":")[-1][:12]
 
 
 def built_from_commit(image):
@@ -373,9 +390,9 @@ def report(out, meta):
         last = max(row["finished"] for row in succeeded)
         makespan = f"{last - first:.0f} s"
     waits = placement_waits(out) or [0]
-    scheduler = meta["images"]["kaptain-scheduler"]["image"]
-    decider = meta["images"]["kaptain-decider"]["image"]
-    warning = "" if built_from_commit(scheduler) else " — ⚠ not built from a recorded commit"
+    scheduler = meta["images"]["kaptain-scheduler"]
+    decider = meta["images"]["kaptain-decider"]
+    warning = "" if built_from_commit(scheduler["image"]) else " — ⚠ not built from a recorded commit"
     usage, imbalance = utilization(out, meta["node_cores"])
 
     return "\n".join([
@@ -384,7 +401,8 @@ def report(out, meta):
         f"Status **{meta['status']}**, policy `{meta['strategy']}` (`{meta['policy_version'][:12]}`). "
         f"Source: {meta['source']}.",
         "",
-        f"- Scheduler image `{scheduler}`{warning}; decider image `{decider}`.",
+        f"- Scheduler `{scheduler['image']}` (digest `{short(scheduler['digest'])}`){warning}; "
+        f"decider `{decider['image']}` (digest `{short(decider['digest'])}`).",
         f"- Pods: {len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished, of {meta['pods']}.",
         f"- Makespan, first pod created → last pod finished: **{makespan}**.",
         f"- Placement wait, pod created → bound (API watch): median {statistics.median(waits):.0f} ms, "
@@ -435,7 +453,7 @@ def run_and_report(name, out_root):
 
 def main():
     parser = argparse.ArgumentParser(prog="kexp")
-    parser.add_argument("command", choices=["list", "manifests", "run"])
+    parser.add_argument("command", choices=["list", "manifests", "run", "cleanup"])
     parser.add_argument("experiment", nargs="?")
     parser.add_argument("--out", type=Path, default=Path("results"))
     args = parser.parse_args()
@@ -444,6 +462,8 @@ def main():
         return list_experiments()
     if args.command == "manifests":
         return print_manifests(args.experiment)
+    if args.command == "cleanup":
+        return delete_experiment_namespaces()
     if not run_and_report(args.experiment, args.out):
         sys.exit(1)
 

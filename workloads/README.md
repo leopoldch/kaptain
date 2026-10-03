@@ -13,6 +13,7 @@ vm 36,700 / 21,200, hdd 410 / 280, so a stress pod runs about a minute on the Pi
 python3 kexp.py list                      # every experiment, validated
 python3 kexp.py manifests drs-even        # the exact pods, as a Kubernetes List
 python3 kexp.py run smoke --out results   # on the master; KEXP_KUBECTL=kubectl elsewhere
+python3 kexp.py cleanup                   # delete namespaces left by a killed run
 ```
 
 On GitHub: **Actions → Run experiment → Run workflow**, choose the experiment and optionally a
@@ -78,7 +79,10 @@ download.
 Each run gets its own namespace, labelled `kaptain.io/experiment`, with a deny-all
 NetworkPolicy. Pods run as non-root, without a ServiceAccount token, with every capability
 dropped and the default seccomp profile. Any labelled namespace left by a killed run is
-deleted, and waited for, before the next run starts and after every run.
+deleted, and waited for, before the next run starts (and before the workflow deploys a policy)
+and after every run. A run refuses to start unless the workers are idle: no pod outside
+`kube-system` on a worker, and no pod using `kaptain-scheduler`. Background load, if ever
+wanted, has to be part of the experiment.
 
 Seeded policies key on `kaptain.io/task-id = <experiment>/<pod>`, so the same seed places the
 same pods the same way in every run.
