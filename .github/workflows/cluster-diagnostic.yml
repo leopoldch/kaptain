@@ -2,6 +2,10 @@ name: Cluster diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ci/cluster-runner-diagnostic]
+    paths:
+      - .github/workflows/cluster-diagnostic.yml
 
 permissions:
   contents: read
@@ -12,7 +16,10 @@ concurrency:
 
 jobs:
   diagnostic:
-    if: github.repository == 'leopoldch/kaptain' && github.ref == 'refs/heads/mainline'
+    if: >-
+      github.repository == 'leopoldch/kaptain' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/mainline') ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/ci/cluster-runner-diagnostic'))
     runs-on: [self-hosted, linux, x64, kaptain-cluster]
     timeout-minutes: 5
     steps:

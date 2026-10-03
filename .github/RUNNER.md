@@ -30,13 +30,17 @@ Publish `cluster-diagnostic.yml` on the default branch, `mainline`, to make
 it available for manual execution in GitHub.
 Then select Actions -> Cluster diagnostic -> Run workflow, using `mainline`.
 
+Before merging, pushes to `ci/cluster-runner-diagnostic` that change the
+diagnostic workflow also trigger it. This lets us test the runner from that
+branch before the workflow is available for manual execution.
+
 It checks Docker, the K3s API, and node readiness, and lists Kaptain
 deployments and pods. Results appear in the GitHub Actions summary.
 It does not launch workloads or modify deployments.
 
 The diagnostic commands passed on the VPS under `test-kpt`. The GitHub API
-confirmed that the runner was `online`. The workflow is prepared locally;
-no GitHub Actions run has been launched yet.
+confirmed that the runner was `online`. GitHub Actions runs are available
+in the repository's Actions tab.
 
 Kubernetes access:
 
@@ -52,7 +56,8 @@ At installation, three nodes were Ready: `alex-master`,
 - Use the `kaptain-cluster` label and the same `kaptain-cluster` concurrency
   group for deployments and experiments. Do not cancel an experiment in progress.
 - The repository is public, and the runner can access Docker on the VPS.
-  Reserve it for trusted manual workflows on `mainline`. Pull request checks
+  Reserve it for trusted manual workflows on `mainline` and the diagnostic
+  push trigger on `ci/cluster-runner-diagnostic`. Pull request checks
   should use GitHub-hosted runners. Avoid `pull_request_target` on this runner.
 - Keep SSH passwords, registration tokens, and the runner's `.credentials*`
   files out of the repository and workflow artifacts.
