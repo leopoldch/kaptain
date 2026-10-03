@@ -52,8 +52,8 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 
 ## Output
 
-`results/<experiment>-<run>/`: `pods.planned.json` (what was meant), `pods.json` (what
-Kubernetes did), `decisions.jsonl` (the plugin's decision and binding lines for this run),
+`results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
+regenerates what was planned), `decisions.jsonl` (the plugin's decision and binding lines for this run),
 `telemetry.csv` (kubelet CPU per node every 5 s), `meta.json`, `report.md`.
 
 The report gives:
