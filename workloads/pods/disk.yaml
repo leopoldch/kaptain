@@ -1,0 +1,18 @@
+# IO-intensive, the DRS Data Write class (Jian et al. 2024), 128 MB instead of 8 GB.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: disk
+  labels:
+    kaptain.io/workload: disk
+spec:
+  schedulerName: kaptain-scheduler
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: work
+      image: ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6
+      command: [stress-ng, --hdd, "1", --hdd-bytes, 128M, --hdd-ops, "20000", --temp-path, /tmp, --metrics-brief]
+      resources:
+        requests: {cpu: 500m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 256Mi}

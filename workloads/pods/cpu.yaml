@@ -1,0 +1,18 @@
+# CPU-intensive, the DRS Video class (Jian et al. 2024); stress-ng as in Raith et al. 2024.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu
+  labels:
+    kaptain.io/workload: cpu
+spec:
+  schedulerName: kaptain-scheduler
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: work
+      image: ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6
+      command: [stress-ng, --cpu, "1", --cpu-ops, "6000", --metrics-brief]
+      resources:
+        requests: {cpu: 500m, memory: 64Mi}
+        limits: {cpu: 500m, memory: 64Mi}

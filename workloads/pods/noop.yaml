@@ -1,0 +1,18 @@
+# No-op pod: isolates the cost of the decision (Zhou et al. 2026).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: noop
+  labels:
+    kaptain.io/workload: noop
+spec:
+  schedulerName: kaptain-scheduler
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: work
+      image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      command: [sleep, "60"]
+      resources:
+        requests: {cpu: 500m, memory: 16Mi}
+        limits: {cpu: 500m, memory: 16Mi}

@@ -1,0 +1,18 @@
+# NGINX serving for 60 s, then exiting (Zhou et al. 2026, web services).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+  labels:
+    kaptain.io/workload: web
+spec:
+  schedulerName: kaptain-scheduler
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  containers:
+    - name: work
+      image: nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
+      command: [sh, -c, "nginx && sleep 60 && nginx -s quit"]
+      resources:
+        requests: {cpu: 500m, memory: 64Mi}
+        limits: {cpu: 500m, memory: 64Mi}
