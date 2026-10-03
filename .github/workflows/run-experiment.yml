@@ -27,6 +27,8 @@ on:
           - largest-cpu-capacity
           - least-allocated
           - least-used
+  push:
+    branches: [feat/experiment-runner]
 
 permissions:
   contents: read
@@ -39,7 +41,9 @@ jobs:
   run:
     if: >-
       github.repository == 'leopoldch/kaptain' &&
-      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      ((github.event_name == 'workflow_dispatch' &&
+        github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/feat/experiment-runner'))
     runs-on: [self-hosted, linux, x64, kaptain-cluster]
     timeout-minutes: 180
     steps:
@@ -54,16 +58,16 @@ jobs:
         run: python3 workloads/kexp.py cleanup
 
       - name: Deploy policy
-        if: inputs.strategy != 'current'
+        if: (inputs.strategy || 'dummy-random') != 'current'
         shell: bash
         env:
-          DEPLOY_STRATEGY: ${{ inputs.strategy }}
+          DEPLOY_STRATEGY: ${{ inputs.strategy || 'dummy-random' }}
         run: bash deploy-policy.sh "$DEPLOY_STRATEGY"
 
       - name: Run experiment
         shell: bash
         env:
-          EXPERIMENT: ${{ inputs.experiment }}
+          EXPERIMENT: ${{ inputs.experiment || 'smoke' }}
           KEXP_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
         run: python3 workloads/kexp.py run "$EXPERIMENT" --out results
 
@@ -71,7 +75,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: experiment-${{ inputs.experiment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: experiment-${{ inputs.experiment || 'smoke' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: results/
           if-no-files-found: ignore
           retention-days: 90
