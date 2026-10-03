@@ -31,6 +31,7 @@ on:
     branches: [feat/experiment-runner]
     paths:
       - .github/workflows/run-experiment.yml
+      - workloads/**
 
 permissions:
   contents: read
