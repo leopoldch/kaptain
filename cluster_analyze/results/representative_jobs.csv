@@ -1,0 +1,31 @@
+cluster,family,job_name,distance_to_center
+0,small MapReduce,j_3202799,0.133
+0,small MapReduce,j_3898060,0.152
+0,small MapReduce,j_4033872,0.154
+0,small MapReduce,j_2293381,0.166
+0,small MapReduce,j_2493600,0.172
+1,one-shot,j_771997,0.101
+1,one-shot,j_984658,0.101
+1,one-shot,j_2682363,0.101
+1,one-shot,j_1705201,0.102
+1,one-shot,j_1427035,0.102
+2,large DAG,j_2374304,0.083
+2,large DAG,j_1951759,0.104
+2,large DAG,j_4075020,0.129
+2,large DAG,j_1045681,0.150
+2,large DAG,j_2262653,0.161
+3,long single-stage,j_3645393,0.123
+3,long single-stage,j_3352646,0.136
+3,long single-stage,j_3051176,0.148
+3,long single-stage,j_2335173,0.155
+3,long single-stage,j_798065,0.168
+4,micro independent,j_1452623,0.045
+4,micro independent,j_2182024,0.050
+4,micro independent,j_3897591,0.051
+4,micro independent,j_2466320,0.052
+4,micro independent,j_2098872,0.057
+5,straggler-prone,j_2206812,0.481
+5,straggler-prone,j_3450456,0.510
+5,straggler-prone,j_3458524,0.532
+5,straggler-prone,j_2481245,0.570
+5,straggler-prone,j_2656987,0.627
