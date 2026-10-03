@@ -53,7 +53,7 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 ## Output
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
-regenerates what was planned), `decisions.jsonl` (the plugin's decision and binding lines for this run),
+regenerates what was planned), `submissions.json` (when each create request was sent), `decisions.jsonl` (the plugin's decision and binding lines for this run),
 `telemetry.csv` (kubelet CPU per node every 5 s), `meta.json`, `report.md`.
 
 The report gives:
@@ -63,7 +63,7 @@ The report gives:
 | Pods succeeded / failed / unfinished | final pod phase |
 | Makespan | first pod created → last pod finished; only when every pod succeeded |
 | Completion time per workload and per node (mean, p95, max) | pod created (API server) → container finished (kubelet) |
-| Scheduling wait (mean, max) | pod created → PodScheduled, both API server |
+| Placement wait (median, p95, max) | create request sent (runner) → pod bound (plugin log), ms; both on the master's clock; includes the create round trip, reported alongside |
 | Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
 | CPU utilization per node (mean, peak) | kubelet usage / allocatable, refreshed by the kubelet every 10–15 s |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |

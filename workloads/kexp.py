@@ -18,6 +18,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --server=https://10.50.0.1:6443")
 ARRIVAL = "kaptain.io/arrival-s"
+TASK_ID = "kaptain.io/task-id"
 SAMPLE_EVERY_S = 5
 
 
@@ -89,7 +90,11 @@ def manifests(name, namespace="default"):
         pod = copy.deepcopy(templates[kind])
         pod["metadata"]["name"] = f"{kind}-{index:03d}"
         pod["metadata"]["namespace"] = namespace
-        pod["metadata"]["annotations"] = {ARRIVAL: f"{arrival:.3f}"}
+        pod["metadata"]["annotations"] = {
+            ARRIVAL: f"{arrival:.3f}",
+            # Seeded policies key on this; without it they use namespace/name, which changes every run.
+            TASK_ID: f"{name}/{kind}-{index:03d}",
+        }
 
         size = {"cpu": f"{rng.randint(*cpu)}m"}
         if memory:
@@ -145,18 +150,25 @@ def all_finished(namespace, expected):
 
 
 def submit(pods):
+    """Create each pod at its arrival time; return when each create request was sent and returned."""
     arrival = lambda pod: float(pod["metadata"]["annotations"][ARRIVAL])
     waiting = sorted(pods, key=arrival)
     start = time.monotonic()
+    submitted = {}
 
     while waiting:
         elapsed = time.monotonic() - start
         due = [pod for pod in waiting if arrival(pod) <= elapsed]
         if due:
+            sent = time.time()
             # Pods due together go in one request, so a burst stays a burst.
             kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List", "items": due}))
+            returned = time.time()
+            for pod in due:
+                submitted[pod["metadata"]["name"]] = {"sent": sent, "returned": returned}
             waiting = waiting[len(due):]
         time.sleep(0.1)
+    return submitted
 
 
 def wait(namespace, expected, deadline):
@@ -165,6 +177,23 @@ def wait(namespace, expected, deadline):
             return True
         time.sleep(SAMPLE_EVERY_S)
     return False
+
+
+def run_pods(out, namespace, pods, nodes, timeout_s):
+    deadline = time.monotonic() + timeout_s
+    stop = threading.Event()
+    with (out / "telemetry.csv").open("w", newline="") as handle:
+        telemetry = csv.writer(handle)
+        telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
+        sampler = threading.Thread(target=sample_until, args=(stop, nodes, telemetry))
+        sampler.start()
+        try:
+            submitted = submit(pods)
+            (out / "submissions.json").write_text(json.dumps(submitted, indent=1))
+            return wait(namespace, len(pods), deadline)
+        finally:
+            stop.set()
+            sampler.join()  # before the file closes
 
 
 def scheduler_env():
@@ -203,24 +232,16 @@ def run(name, out_root):
     }
 
     kubectl("create", "namespace", namespace)
-    deadline = time.monotonic() + experiment["timeout_s"]
-    stop = threading.Event()
     try:
-        with (out / "telemetry.csv").open("w", newline="") as handle:
-            telemetry = csv.writer(handle)
-            telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
-            sampler = threading.Thread(target=sample_until, args=(stop, nodes, telemetry), daemon=True)
-            sampler.start()
-            submit(pods)
-            complete = wait(namespace, len(pods), deadline)
-            stop.set()
-            sampler.join()
+        complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
         meta["status"] = "complete" if complete else "timeout"
     finally:
-        stop.set()
-        collect(out, namespace, meta["started_at"])
-        (out / "meta.json").write_text(json.dumps(meta, indent=2))
-        kubectl("delete", "namespace", namespace, "--wait=false")
+        try:
+            (out / "meta.json").write_text(json.dumps(meta, indent=2))
+            collect(out, namespace, meta["started_at"])
+        finally:
+            # Last, and whatever failed before: a leftover namespace would load the next run.
+            kubectl("delete", "namespace", namespace, "--wait=false")
     return out, meta
 
 
@@ -236,16 +257,26 @@ def p95(values):
 
 def pod_times(pod):
     created = seconds(pod["metadata"]["creationTimestamp"])
-    scheduled = next(c["lastTransitionTime"] for c in pod["status"]["conditions"] if c["type"] == "PodScheduled")
-    finished = pod["status"]["containerStatuses"][0]["state"]["terminated"]["finishedAt"]
+    finished = seconds(pod["status"]["containerStatuses"][0]["state"]["terminated"]["finishedAt"])
     return {
         "workload": pod["metadata"]["labels"]["kaptain.io/workload"],
         "node": pod["spec"]["nodeName"],
         "created": created,
-        "finished": seconds(finished),
-        "wait": seconds(scheduled) - created,
-        "completion": seconds(finished) - created,
+        "finished": finished,
+        "completion": finished - created,
     }
+
+
+def placement_waits(out, log_lines):
+    """Create request sent (runner) -> pod bound (plugin), in ms. Both run on the master: one clock."""
+    path = out / "submissions.json"
+    if not path.exists():
+        return [], []
+    submitted = json.loads(path.read_text())
+    bindings = [line for line in log_lines if line["event"] == "binding"]
+    waits = [1000 * (seconds(b["timestamp"]) - submitted[b["pod_name"]]["sent"]) for b in bindings]
+    round_trips = [1000 * (s["returned"] - s["sent"]) for s in submitted.values()]
+    return waits, round_trips
 
 
 def table(title, rows, key):
@@ -280,8 +311,8 @@ def report(out, meta):
     failed = sum(1 for pod in pods if pod["status"]["phase"] == "Failed")
     unfinished = meta["pods"] - len(succeeded) - failed
 
-    decisions = [json.loads(line) for line in (out / "decisions.jsonl").read_text().splitlines()]
-    decisions = [d for d in decisions if d["event"] == "decision"]
+    log_lines = [json.loads(line) for line in (out / "decisions.jsonl").read_text().splitlines()]
+    decisions = [line for line in log_lines if line["event"] == "decision"]
     durations = [d["durations_ms"]["total"] for d in decisions] or [0]
     fallbacks = sum(1 for d in decisions if d["fallback"])
 
@@ -290,7 +321,8 @@ def report(out, meta):
         first = min(row["created"] for row in succeeded)
         last = max(row["finished"] for row in succeeded)
         makespan = f"{last - first:.0f} s"
-    waits = [row["wait"] for row in succeeded] or [0]
+    waits, round_trips = placement_waits(out, log_lines)
+    waits, round_trips = waits or [0], round_trips or [0]
     usage, imbalance = utilization(out, meta["node_cores"])
 
     return "\n".join([
@@ -301,7 +333,9 @@ def report(out, meta):
         "",
         f"- Pods: {len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished, of {meta['pods']}.",
         f"- Makespan, first pod created → last pod finished: **{makespan}**.",
-        f"- Scheduling wait, created → scheduled: mean {statistics.fmean(waits):.1f} s, max {max(waits):.0f} s.",
+        f"- Placement wait, create request sent → pod bound: median {statistics.median(waits):.0f} ms, "
+        f"p95 {p95(waits):.0f} ms, max {max(waits):.0f} ms "
+        f"(includes the create round trip, median {statistics.median(round_trips):.0f} ms).",
         f"- Decisions: {len(decisions)}, fallbacks: {fallbacks}, plugin time "
         f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms.",
         "",
