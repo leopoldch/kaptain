@@ -9,6 +9,12 @@ spec:
   schedulerName: kaptain-scheduler
   restartPolicy: Never
   activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
   containers:
     - name: work
       image: ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6
@@ -16,3 +22,6 @@ spec:
       resources:
         requests: {cpu: 500m, memory: 256Mi}
         limits: {cpu: 500m, memory: 256Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
