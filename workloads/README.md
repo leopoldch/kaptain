@@ -53,17 +53,18 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 ## Output
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
-regenerates what was planned), `submissions.json` (when each create request was sent), `decisions.jsonl` (the plugin's decision and binding lines for this run),
+regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner), `decisions.jsonl` (the plugin's decision and binding lines for this run),
 `telemetry.csv` (kubelet CPU per node every 5 s), `meta.json`, `report.md`.
 
 The report gives:
 
 | Metric | Boundary |
 |---|---|
+| Images | scheduler and decider images actually running, by digest; flagged when the scheduler image is not tagged with a commit |
 | Pods succeeded / failed / unfinished | final pod phase |
 | Makespan | first pod created → last pod finished; only when every pod succeeded |
 | Completion time per workload and per node (mean, p95, max) | pod created (API server) → container finished (kubelet) |
-| Placement wait (median, p95, max) | create request sent (runner) → pod bound (plugin log), ms; both on the master's clock; includes the create round trip, reported alongside |
+| Placement wait (median, p95, max) | pod first seen → first seen with a node, in the API watch stream, both timed by the runner on the master, ms |
 | Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
 | CPU utilization per node (mean, peak) | kubelet usage / allocatable, refreshed by the kubelet every 10–15 s |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |
@@ -71,3 +72,17 @@ The report gives:
 API server and kubelet timestamps have 1 s resolution and come from different machines'
 clocks. Images are pulled on first use, so the first pod of a type on a node also pays the
 download.
+
+## Isolation
+
+Each run gets its own namespace, labelled `kaptain.io/experiment`, with a deny-all
+NetworkPolicy. Pods run as non-root, without a ServiceAccount token, with every capability
+dropped and the default seccomp profile. Any labelled namespace left by a killed run is
+deleted, and waited for, before the next run starts and after every run.
+
+Seeded policies key on `kaptain.io/task-id = <experiment>/<pod>`, so the same seed places the
+same pods the same way in every run.
+
+Known limits (2026-10-03): the NetworkPolicy is enforced on `leopold-raspberrypi` but not on
+`alex-jetson`, whose K3s agent does not apply it. The scheduler image is built by hand, not
+by the deployment workflow, so the report can only flag that it is not tied to a commit.

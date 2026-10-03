@@ -5,7 +5,9 @@ import csv
 import json
 import os
 import random
+import re
 import shlex
+import signal
 import statistics
 import subprocess
 import sys
@@ -19,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --server=https://10.50.0.1:6443")
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
+EXPERIMENT_LABEL = "kaptain.io/experiment"
 SAMPLE_EVERY_S = 5
 
 
@@ -150,25 +153,18 @@ def all_finished(namespace, expected):
 
 
 def submit(pods):
-    """Create each pod at its arrival time; return when each create request was sent and returned."""
     arrival = lambda pod: float(pod["metadata"]["annotations"][ARRIVAL])
     waiting = sorted(pods, key=arrival)
     start = time.monotonic()
-    submitted = {}
 
     while waiting:
         elapsed = time.monotonic() - start
         due = [pod for pod in waiting if arrival(pod) <= elapsed]
         if due:
-            sent = time.time()
             # Pods due together go in one request, so a burst stays a burst.
             kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List", "items": due}))
-            returned = time.time()
-            for pod in due:
-                submitted[pod["metadata"]["name"]] = {"sent": sent, "returned": returned}
             waiting = waiting[len(due):]
         time.sleep(0.1)
-    return submitted
 
 
 def wait(namespace, expected, deadline):
@@ -179,27 +175,75 @@ def wait(namespace, expected, deadline):
     return False
 
 
+def watch_pods(process, path):
+    """Time, on the runner's clock, every change the API server streams for our pods."""
+    with path.open("w", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["time", "event", "pod", "node"])
+        for line in process.stdout:
+            event = json.loads(line)
+            pod = event["object"]
+            writer.writerow([time.time(), event["type"], pod["metadata"]["name"], pod["spec"].get("nodeName", "")])
+
+
 def run_pods(out, namespace, pods, nodes, timeout_s):
     deadline = time.monotonic() + timeout_s
     stop = threading.Event()
+
+    # The server ends the watch after timeoutSeconds, so it cannot outlive the run inside the K3s container.
+    watch_url = f"/api/v1/namespaces/{namespace}/pods?watch=true&timeoutSeconds={timeout_s}"
+    watch = subprocess.Popen(shlex.split(KUBECTL) + ["get", "--raw", watch_url],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
+    watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv"))
+    watcher.start()
+    time.sleep(2)  # let the watch open before the first pod
+
     with (out / "telemetry.csv").open("w", newline="") as handle:
         telemetry = csv.writer(handle)
         telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
         sampler = threading.Thread(target=sample_until, args=(stop, nodes, telemetry))
         sampler.start()
         try:
-            submitted = submit(pods)
-            (out / "submissions.json").write_text(json.dumps(submitted, indent=1))
+            submit(pods)
             return wait(namespace, len(pods), deadline)
         finally:
             stop.set()
             sampler.join()  # before the file closes
+            watch.terminate()
+            watcher.join()
 
 
 def scheduler_env():
     deployment = json.loads(kubectl("-n", "kube-system", "get", "deploy", "kaptain-scheduler", "-o", "json"))
     container = deployment["spec"]["template"]["spec"]["containers"][0]
     return {e["name"]: e.get("value", "") for e in container["env"]}
+
+
+def running_images():
+    """The images actually running, by digest: the deployment spec alone can be stale."""
+    selector = "app in (kaptain-scheduler,kaptain-decider)"
+    pods = json.loads(kubectl("-n", "kube-system", "get", "pods", "-l", selector, "-o", "json"))["items"]
+    images = {}
+    for pod in pods:
+        status = pod["status"]["containerStatuses"][0]
+        images[pod["metadata"]["labels"]["app"]] = {"image": status["image"], "digest": status["imageID"]}
+    return images
+
+
+def create_namespace(namespace):
+    namespace_object = {"apiVersion": "v1", "kind": "Namespace",
+                        "metadata": {"name": namespace, "labels": {EXPERIMENT_LABEL: "true"}}}
+    # Workloads need no network: deny everything, so a compromised image cannot reach the cluster.
+    deny_all = {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+                "metadata": {"name": "deny-all", "namespace": namespace},
+                "spec": {"podSelector": {}, "policyTypes": ["Ingress", "Egress"]}}
+    kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List",
+                                                    "items": [namespace_object, deny_all]}))
+
+
+def delete_experiment_namespaces():
+    # Waits, so that the next run never starts while previous pods are still terminating.
+    kubectl("delete", "namespace", "-l", EXPERIMENT_LABEL, "--wait=true", "--timeout=300s")
 
 
 def collect(out, namespace, started_at):
@@ -226,12 +270,15 @@ def run(name, out_root):
         "pods": len(pods),
         "strategy": env["KAPTAIN_STRATEGY"],
         "policy_version": env["POLICY_VERSION"],
+        "images": running_images(),
         "node_cores": nodes,
         "started_at": now(),
         "status": "aborted",
     }
 
-    kubectl("create", "namespace", namespace)
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a cancelled job still cleans up
+    delete_experiment_namespaces()  # left over by a run that was killed
+    create_namespace(namespace)
     try:
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
         meta["status"] = "complete" if complete else "timeout"
@@ -241,7 +288,7 @@ def run(name, out_root):
             collect(out, namespace, meta["started_at"])
         finally:
             # Last, and whatever failed before: a leftover namespace would load the next run.
-            kubectl("delete", "namespace", namespace, "--wait=false")
+            delete_experiment_namespaces()
     return out, meta
 
 
@@ -267,16 +314,20 @@ def pod_times(pod):
     }
 
 
-def placement_waits(out, log_lines):
-    """Create request sent (runner) -> pod bound (plugin), in ms. Both run on the master: one clock."""
-    path = out / "submissions.json"
-    if not path.exists():
-        return [], []
-    submitted = json.loads(path.read_text())
-    bindings = [line for line in log_lines if line["event"] == "binding"]
-    waits = [1000 * (seconds(b["timestamp"]) - submitted[b["pod_name"]]["sent"]) for b in bindings]
-    round_trips = [1000 * (s["returned"] - s["sent"]) for s in submitted.values()]
-    return waits, round_trips
+def built_from_commit(image):
+    """Deployed images are tagged <commit>-...; anything else cannot be traced back to the code."""
+    return re.match(r"[0-9a-f]{40}", image.rsplit(":", 1)[-1]) is not None
+
+
+def placement_waits(out):
+    """Pod first seen by the watch -> first seen with a node, in ms, both on the runner's clock."""
+    created, bound = {}, {}
+    with (out / "watch.csv").open() as handle:
+        for row in csv.DictReader(handle):
+            created.setdefault(row["pod"], float(row["time"]))
+            if row["node"]:
+                bound.setdefault(row["pod"], float(row["time"]))
+    return [1000 * (bound[pod] - created[pod]) for pod in bound]
 
 
 def table(title, rows, key):
@@ -321,8 +372,10 @@ def report(out, meta):
         first = min(row["created"] for row in succeeded)
         last = max(row["finished"] for row in succeeded)
         makespan = f"{last - first:.0f} s"
-    waits, round_trips = placement_waits(out, log_lines)
-    waits, round_trips = waits or [0], round_trips or [0]
+    waits = placement_waits(out) or [0]
+    scheduler = meta["images"]["kaptain-scheduler"]["image"]
+    decider = meta["images"]["kaptain-decider"]["image"]
+    warning = "" if built_from_commit(scheduler) else " — ⚠ not built from a recorded commit"
     usage, imbalance = utilization(out, meta["node_cores"])
 
     return "\n".join([
@@ -331,11 +384,11 @@ def report(out, meta):
         f"Status **{meta['status']}**, policy `{meta['strategy']}` (`{meta['policy_version'][:12]}`). "
         f"Source: {meta['source']}.",
         "",
+        f"- Scheduler image `{scheduler}`{warning}; decider image `{decider}`.",
         f"- Pods: {len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished, of {meta['pods']}.",
         f"- Makespan, first pod created → last pod finished: **{makespan}**.",
-        f"- Placement wait, create request sent → pod bound: median {statistics.median(waits):.0f} ms, "
-        f"p95 {p95(waits):.0f} ms, max {max(waits):.0f} ms "
-        f"(includes the create round trip, median {statistics.median(round_trips):.0f} ms).",
+        f"- Placement wait, pod created → bound (API watch): median {statistics.median(waits):.0f} ms, "
+        f"p95 {p95(waits):.0f} ms, max {max(waits):.0f} ms.",
         f"- Decisions: {len(decisions)}, fallbacks: {fallbacks}, plugin time "
         f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms.",
         "",
