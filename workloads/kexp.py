@@ -339,10 +339,14 @@ def built_from_commit(image):
 def placement_waits(out):
     """Pod first seen by the watch -> first seen with a node, in ms, both on the runner's clock."""
     created, bound = {}, {}
-    with (out / "watch.csv").open() as handle:
+    path = out / "watch.csv"
+    if not path.exists():
+        return []
+    with path.open() as handle:
         for row in csv.DictReader(handle):
-            created.setdefault(row["pod"], float(row["time"]))
-            if row["node"]:
+            if row["event"] == "ADDED" and not row["node"]:
+                created.setdefault(row["pod"], float(row["time"]))
+            if row["node"] and row["pod"] in created:
                 bound.setdefault(row["pod"], float(row["time"]))
     return [1000 * (bound[pod] - created[pod]) for pod in bound]
 
@@ -381,7 +385,10 @@ def report(out, meta):
 
     log_lines = [json.loads(line) for line in (out / "decisions.jsonl").read_text().splitlines()]
     decisions = [line for line in log_lines if line["event"] == "decision"]
-    durations = [d["durations_ms"]["total"] for d in decisions] or [0]
+    durations = [d["durations_ms"]["total"] for d in decisions]
+    plugin_time = "missing"
+    if durations:
+        plugin_time = f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms"
     fallbacks = sum(1 for d in decisions if d["fallback"])
 
     makespan = "incomplete"
@@ -389,7 +396,12 @@ def report(out, meta):
         first = min(row["created"] for row in succeeded)
         last = max(row["finished"] for row in succeeded)
         makespan = f"{last - first:.0f} s"
-    waits = placement_waits(out) or [0]
+    waits = placement_waits(out)
+    coverage = f"{len(waits)}/{meta['pods']} pods"
+    placement = f"incomplete ({coverage})" if waits else f"missing ({coverage})"
+    if waits and len(waits) == meta["pods"]:
+        placement = (f"median {statistics.median(waits):.0f} ms, p95 {p95(waits):.0f} ms, "
+                     f"max {max(waits):.0f} ms ({coverage})")
     scheduler = meta["images"]["kaptain-scheduler"]
     decider = meta["images"]["kaptain-decider"]
     warning = "" if built_from_commit(scheduler["image"]) else " — ⚠ not built from a recorded commit"
@@ -405,10 +417,8 @@ def report(out, meta):
         f"decider `{decider['image']}` (digest `{short(decider['digest'])}`).",
         f"- Pods: {len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished, of {meta['pods']}.",
         f"- Makespan, first pod created → last pod finished: **{makespan}**.",
-        f"- Placement wait, pod created → bound (API watch): median {statistics.median(waits):.0f} ms, "
-        f"p95 {p95(waits):.0f} ms, max {max(waits):.0f} ms.",
-        f"- Decisions: {len(decisions)}, fallbacks: {fallbacks}, plugin time "
-        f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms.",
+        f"- Placement wait, pod created → bound (API watch): {placement}.",
+        f"- Decisions: {len(decisions)}, fallbacks: {fallbacks}, plugin time {plugin_time}.",
         "",
         "Completion time: pod created (API server) → container finished (kubelet), 1 s resolution.",
         "",

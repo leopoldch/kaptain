@@ -74,6 +74,10 @@ API server and kubelet timestamps have 1 s resolution and come from different ma
 clocks. Images are pulled on first use, so the first pod of a type on a node also pays the
 download.
 
+Placement statistics require an unbound `ADDED` event followed by a bound event for every
+expected pod. Otherwise the report shows `missing` or `incomplete` with the coverage (n/N pods),
+without placement statistics. Plugin time is `missing` when no decisions were logged.
+
 ## Isolation
 
 Each run gets its own namespace, labelled `kaptain.io/experiment`, with a deny-all
