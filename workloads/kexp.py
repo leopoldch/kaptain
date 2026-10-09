@@ -196,11 +196,12 @@ def submit(pods):
 
 
 def wait(namespace, expected, deadline):
-    while time.monotonic() < deadline:
-        if all_finished(namespace, expected):
-            return True
+    # Checked at least once, so a submission that overran the deadline still sees finished pods.
+    while not all_finished(namespace, expected):
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(SAMPLE_EVERY_S)
-    return False
+    return True
 
 
 def watch_pods(process, path, stop, opened):
