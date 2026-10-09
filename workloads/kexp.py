@@ -139,18 +139,31 @@ def cores(quantity):
     return float(quantity)
 
 
+BYTE_SUFFIXES = {"Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40, "k": 10**3, "M": 10**6, "G": 10**9, "T": 10**12}
+
+
+def bytes_of(quantity):
+    for suffix, factor in BYTE_SUFFIXES.items():
+        if quantity.endswith(suffix):
+            return int(float(quantity[:-len(suffix)]) * factor)
+    return int(quantity)
+
+
 def worker_nodes():
-    """The nodes experiments run on and measure: chosen by label, which the pods select too."""
+    """The nodes experiments run on and measure, with what they can allocate: chosen by label,
+    which the pods select too."""
     nodes = json.loads(kubectl("get", "nodes", "-l", f"{EXPERIMENT_NODE}=true", "-o", "json"))["items"]
     if not nodes:
         raise RuntimeError(f"no node labelled {EXPERIMENT_NODE}=true")
-    return {n["metadata"]["name"]: cores(n["status"]["allocatable"]["cpu"]) for n in nodes}
+    return {n["metadata"]["name"]: n["status"]["allocatable"] for n in nodes}
 
 
 def sample_node(node):
+    """One telemetry row, and one network row per interface, from a single kubelet answer."""
     try:
         raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary", timeout_s=SAMPLE_TIMEOUT_S)
-        cpu = json.loads(raw)["node"]["cpu"]
+        stats = json.loads(raw)["node"]
+        cpu = stats["cpu"]
         usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
         # Null until the kubelet has two readings to compute a rate from.
         if isinstance(usage, bool) or not isinstance(usage, (int, float)):
@@ -158,20 +171,29 @@ def sample_node(node):
     except (RuntimeError, ValueError, KeyError, TypeError) as error:
         # Left out, never written as zero; the report counts the samples per node.
         print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
-        return None
+        return None, []
 
-    # The kubelet refreshes every 10-15 s: its timestamp tells how old a value is.
-    return [now(), node, usage / 1e9, kubelet_time]
+    # The kubelet refreshes every 10-15 s: its timestamps tell how old each value is.
+    # Memory or network missing leaves its cells empty: the CPU reading is kept.
+    at = now()
+    memory = stats.get("memory") or {}
+    row = [at, node, usage / 1e9, kubelet_time, memory.get("workingSetBytes", ""), memory.get("time", "")]
+    # Every interface, cumulative bytes: which one carries the traffic differs between nodes.
+    network = stats.get("network") or {}
+    interfaces = [[at, node, i.get("name", ""), i.get("rxBytes", ""), i.get("txBytes", ""), network.get("time", "")]
+                  for i in network.get("interfaces") or []]
+    return row, interfaces
 
 
-def sample_until(stop, node, telemetry, lock):
+def sample_until(stop, node, telemetry, network, lock):
     # One thread per node: a slow kubelet delays neither a pod's arrival nor the other nodes'
     # samples. It is waited for, not skipped, since it is slow when its node is busiest.
     while not stop.wait(SAMPLE_EVERY_S):
-        row = sample_node(node)
+        row, interfaces = sample_node(node)
         if row:
             with lock:
                 telemetry.writerow(row)
+                network.writerows(interfaces)
 
 
 def all_finished(namespace, expected):
@@ -255,11 +277,14 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
     watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv", stop, opened))
     watcher.start()
 
-    with (out / "telemetry.csv").open("w", newline="") as handle:
+    with (out / "telemetry.csv").open("w", newline="") as handle, (out / "network.csv").open("w", newline="") as net:
         telemetry = csv.writer(handle)
-        telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
+        telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time", "memory_bytes", "memory_time"])
+        network = csv.writer(net)
+        network.writerow(["time", "node", "interface", "rx_bytes", "tx_bytes", "network_time"])
         lock = threading.Lock()
-        samplers = [threading.Thread(target=sample_until, args=(stop, node, telemetry, lock)) for node in nodes]
+        samplers = [threading.Thread(target=sample_until, args=(stop, node, telemetry, network, lock))
+                    for node in nodes]
         for sampler in samplers:
             sampler.start()
         try:
@@ -405,7 +430,8 @@ def run(name, run_id, namespace, owner, out_root):
         "strategy": env["KAPTAIN_STRATEGY"],
         "policy_version": env["POLICY_VERSION"],
         "images": images,
-        "node_cores": nodes,
+        "node_cores": {node: cores(allocatable["cpu"]) for node, allocatable in nodes.items()},
+        "node_memory_bytes": {node: bytes_of(allocatable["memory"]) for node, allocatable in nodes.items()},
         "started_at": now(),
         "status": "aborted",
     }
@@ -488,7 +514,7 @@ def table(title, rows, key):
     return lines
 
 
-def utilization(out, node_cores):
+def utilization(out, node_cores, node_memory):
     samples = []
     path = out / "telemetry.csv"
     if path.exists():
@@ -499,12 +525,17 @@ def utilization(out, node_cores):
     for node, total in sorted(node_cores.items()):
         percent = [100 * float(s["cpu_cores"]) / total for s in samples if s["node"] == node]
         if not percent:
-            lines.append(f"| {node} | 0 | missing | missing |")
+            lines.append(f"| {node} | 0 | missing | missing | missing | missing |")
             continue
         means.append(statistics.fmean(percent))
-        lines.append(f"| {node} | {len(percent)} | {means[-1]:.1f} | {max(percent):.1f} |")
+        # Memory: a sample whose memory cell is empty still counts for the CPU.
+        memory = [100 * int(s["memory_bytes"]) / node_memory[node]
+                  for s in samples if s["node"] == node and s.get("memory_bytes") and node in node_memory]
+        memory_cells = f"{statistics.fmean(memory):.1f} | {max(memory):.1f}" if memory else "missing | missing"
+        lines.append(f"| {node} | {len(percent)} | {means[-1]:.1f} | {max(percent):.1f} | {memory_cells} |")
 
-    header = ["| Node | samples | mean CPU % | peak CPU % |", "|---|---:|---:|---:|"]
+    header = ["| Node | samples | mean CPU % | peak CPU % | mean memory % | peak memory % |",
+              "|---|---:|---:|---:|---:|---:|"]
     imbalance = statistics.pstdev(means) if len(means) > 1 else None
     return header + lines, imbalance
 
@@ -549,7 +580,7 @@ def report(out, meta):
     scheduler = meta["images"]["kaptain-scheduler"]
     decider = meta["images"]["kaptain-decider"]
     warning = "" if built_from_commit(scheduler["image"]) else " — ⚠ not built from a recorded commit"
-    usage, imbalance = utilization(out, meta["node_cores"])
+    usage, imbalance = utilization(out, meta["node_cores"], meta.get("node_memory_bytes", {}))
     error = f" Error: `{meta['error']}`." if "error" in meta else ""
 
     return "\n".join([
@@ -571,7 +602,7 @@ def report(out, meta):
         "",
         *table("Node", succeeded, "node"),
         "",
-        "CPU utilization: kubelet usage / allocatable, sampled every few seconds.",
+        "Utilization: kubelet CPU usage and memory working set / allocatable, sampled every few seconds.",
         "",
         *usage,
         "",

@@ -55,7 +55,10 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
-`telemetry.csv` (kubelet CPU per node every 5 s, later when a busy kubelet is slow to answer), `meta.json`, `report.md`.
+`telemetry.csv` (kubelet CPU and memory working set per node every 5 s, later when a busy kubelet is slow to answer;
+each with the kubelet's own timestamp), `network.csv` (from the same answers: cumulative bytes received and sent, for every
+interface, since the one carrying the cluster's traffic differs between nodes), `meta.json` (with each node's allocatable
+CPU and memory), `report.md`.
 
 The report gives:
 
@@ -67,7 +70,7 @@ The report gives:
 | Completion time per workload and per node (mean, p95, max) | pod created (API server) → container finished (kubelet) |
 | Placement wait (median, p95, max) | pod first seen → first seen with a node, in the API watch stream, both timed by the runner on the master, ms |
 | Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
-| CPU utilization per node (samples, mean, peak) | kubelet usage / allocatable, refreshed by the kubelet every 10–15 s |
+| CPU and memory utilization per node (samples, mean, peak) | kubelet CPU usage and memory working set / allocatable, refreshed by the kubelet every 10–15 s; memory `missing` for runs before 2026-10-09 |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |
 
 API server and kubelet timestamps have 1 s resolution and come from different machines'
