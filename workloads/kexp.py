@@ -145,7 +145,7 @@ def quantity(text):
     if not match:
         raise ValueError(f"not a Kubernetes quantity: {text!r}")
     number, suffix = match.groups()
-    if suffix[:1] in ("e", "E") and len(suffix) > 1:
+    if suffix not in SUFFIXES:  # an exponent
         return float(number) * 10 ** int(suffix[1:])
     return float(number) * SUFFIXES[suffix]
 
