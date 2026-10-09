@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import tomllib
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -259,9 +260,17 @@ def check_idle(workers):
 
 
 def collect(out, namespace, started_at):
-    (out / "pods.json").write_text(kubectl("-n", namespace, "get", "pods", "-o", "json"))
+    """Never raises: a file that could not be collected is absent, and the report says missing."""
+    try:
+        (out / "pods.json").write_text(kubectl("-n", namespace, "get", "pods", "-o", "json"))
+    except RuntimeError as error:
+        print(f"pods not collected: {error}", file=sys.stderr)
 
-    logs = kubectl("-n", "kube-system", "logs", "deploy/kaptain-scheduler", f"--since-time={started_at}")
+    try:
+        logs = kubectl("-n", "kube-system", "logs", "deploy/kaptain-scheduler", f"--since-time={started_at}")
+    except RuntimeError as error:
+        print(f"decisions not collected: {error}", file=sys.stderr)
+        return
     ours = [line + "\n" for line in logs.splitlines() if f'"namespace":"{namespace}"' in line]
     (out / "decisions.jsonl").write_text("".join(ours))
 
@@ -295,13 +304,13 @@ def run(name, out_root):
         create_namespace(namespace)
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
         meta["status"] = "complete" if complete else "timeout"
+    except Exception as error:
+        # The run stays aborted, but what it measured is still collected and reported.
+        traceback.print_exc()
+        meta["error"] = f"{type(error).__name__}: {error}"
     finally:
-        try:
-            (out / "meta.json").write_text(json.dumps(meta, indent=2))
-            collect(out, namespace, meta["started_at"])
-        finally:
-            # Last, and whatever failed before: a leftover namespace would load the next run.
-            delete_experiment_namespaces()
+        (out / "meta.json").write_text(json.dumps(meta, indent=2))
+        collect(out, namespace, meta["started_at"])
     return out, meta
 
 
@@ -360,8 +369,11 @@ def table(title, rows, key):
 
 
 def utilization(out, node_cores):
-    with (out / "telemetry.csv").open() as handle:
-        samples = list(csv.DictReader(handle))
+    samples = []
+    path = out / "telemetry.csv"
+    if path.exists():
+        with path.open() as handle:
+            samples = list(csv.DictReader(handle))
 
     lines, means = [], []
     for node, total in sorted(node_cores.items()):
@@ -378,20 +390,30 @@ def utilization(out, node_cores):
 
 
 def report(out, meta):
-    pods = json.loads((out / "pods.json").read_text())["items"]
+    pods_path = out / "pods.json"
+    pods = json.loads(pods_path.read_text())["items"] if pods_path.exists() else []
     succeeded = [pod_times(pod) for pod in pods if pod["status"]["phase"] == "Succeeded"]
     failed = sum(1 for pod in pods if pod["status"]["phase"] == "Failed")
     unfinished = meta["pods"] - len(succeeded) - failed
+    pod_counts = f"{len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished"
+    if not pods_path.exists():
+        pod_counts = "missing"
 
-    log_lines = [json.loads(line) for line in (out / "decisions.jsonl").read_text().splitlines()]
+    decisions_path = out / "decisions.jsonl"
+    log_lines = []
+    if decisions_path.exists():
+        log_lines = [json.loads(line) for line in decisions_path.read_text().splitlines()]
     decisions = [line for line in log_lines if line["event"] == "decision"]
     durations = [d["durations_ms"]["total"] for d in decisions]
     plugin_time = "missing"
     if durations:
         plugin_time = f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms"
     fallbacks = sum(1 for d in decisions if d["fallback"])
+    decision_counts = f"{len(decisions)}, fallbacks: {fallbacks}"
+    if not decisions_path.exists():
+        decision_counts = "missing"
 
-    makespan = "incomplete"
+    makespan = "missing" if not pods_path.exists() else "incomplete"
     if succeeded and not failed and not unfinished:
         first = min(row["created"] for row in succeeded)
         last = max(row["finished"] for row in succeeded)
@@ -406,19 +428,20 @@ def report(out, meta):
     decider = meta["images"]["kaptain-decider"]
     warning = "" if built_from_commit(scheduler["image"]) else " — ⚠ not built from a recorded commit"
     usage, imbalance = utilization(out, meta["node_cores"])
+    error = f" Error: `{meta['error']}`." if "error" in meta else ""
 
     return "\n".join([
         f"# `{meta['experiment']}` — run `{meta['run_id']}`",
         "",
         f"Status **{meta['status']}**, policy `{meta['strategy']}` (`{meta['policy_version'][:12]}`). "
-        f"Source: {meta['source']}.",
+        f"Source: {meta['source']}.{error}",
         "",
         f"- Scheduler `{scheduler['image']}` (digest `{short(scheduler['digest'])}`){warning}; "
         f"decider `{decider['image']}` (digest `{short(decider['digest'])}`).",
-        f"- Pods: {len(succeeded)} succeeded, {failed} failed, {unfinished} unfinished, of {meta['pods']}.",
+        f"- Pods: {pod_counts}, of {meta['pods']}.",
         f"- Makespan, first pod created → last pod finished: **{makespan}**.",
         f"- Placement wait, pod created → bound (API watch): {placement}.",
-        f"- Decisions: {len(decisions)}, fallbacks: {fallbacks}, plugin time {plugin_time}.",
+        f"- Decisions: {decision_counts}, plugin time {plugin_time}.",
         "",
         "Completion time: pod created (API server) → container finished (kubelet), 1 s resolution.",
         "",
@@ -451,13 +474,17 @@ def print_manifests(name):
 
 
 def run_and_report(name, out_root):
-    out, meta = run(name, out_root)
-    text = report(out, meta)
-    (out / "report.md").write_text(text)
-    print(text)
+    try:
+        out, meta = run(name, out_root)
+        text = report(out, meta)
+        (out / "report.md").write_text(text)
+        print(text)
 
-    if "GITHUB_STEP_SUMMARY" in os.environ:
-        Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
+        if "GITHUB_STEP_SUMMARY" in os.environ:
+            Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
+    finally:
+        # Last, after the report and whatever failed before: a leftover namespace would load the next run.
+        delete_experiment_namespaces()
     return meta["status"] == "complete"
 
 

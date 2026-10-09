@@ -77,6 +77,8 @@ download.
 Placement statistics require an unbound `ADDED` event followed by a bound event for every
 expected pod. Otherwise the report shows `missing` or `incomplete` with the coverage (n/N pods),
 without placement statistics. Plugin time is `missing` when no decisions were logged.
+A run that fails partway is still reported: status `aborted` with the error, and whatever
+could not be collected shows as `missing`.
 
 ## Isolation
 
