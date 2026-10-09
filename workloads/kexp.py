@@ -15,6 +15,7 @@ import threading
 import time
 import tomllib
 import traceback
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,10 @@ KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --s
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
+OWNER_LABEL = "kaptain.io/run-owner"  # random per process: a run deletes only the namespace it created
+HEARTBEAT = "kaptain.io/heartbeat"  # unix time, renewed while the run lives
+HEARTBEAT_EVERY_S = 60
+STALE_AFTER_S = 300  # silent this long: the run was killed, `kexp.py cleanup` may delete its namespace
 EXPERIMENT_NODE = "kaptain.io/experiment-node"  # =true on the nodes experiments run on, master included
 WATCH_PROBE = "kexp-watch-probe"  # a pod no scheduler takes, streamed once the watch is open
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
@@ -294,9 +299,10 @@ def running_images():
     return images
 
 
-def create_namespace(namespace):
+def create_namespace(namespace, owner):
     namespace_object = {"apiVersion": "v1", "kind": "Namespace",
-                        "metadata": {"name": namespace, "labels": {EXPERIMENT_LABEL: "true"}}}
+                        "metadata": {"name": namespace, "labels": {EXPERIMENT_LABEL: "true", OWNER_LABEL: owner},
+                                     "annotations": {HEARTBEAT: str(int(time.time()))}}}
     # Workloads need no network: deny everything. Not every node enforces it (see README).
     deny_all = {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
                 "metadata": {"name": "deny-all", "namespace": namespace},
@@ -305,9 +311,47 @@ def create_namespace(namespace):
                                                     "items": [namespace_object, deny_all]}))
 
 
-def delete_experiment_namespaces():
-    # Waits, so that the next run never starts while previous pods are still terminating.
-    kubectl("delete", "namespace", "-l", EXPERIMENT_LABEL, "--wait=true", "--timeout=300s", timeout_s=330)
+def heartbeat_until(stop, owner):
+    """Show `kexp.py cleanup` that the run is alive. A missed beat is harmless, only a long silence counts."""
+    while not stop.wait(HEARTBEAT_EVERY_S):
+        try:
+            kubectl("annotate", "namespace", "-l", f"{OWNER_LABEL}={owner}",
+                    f"{HEARTBEAT}={int(time.time())}", "--overwrite")
+        except RuntimeError:
+            pass  # the API did not answer this time (before the namespace exists, nothing matches: no error)
+
+
+def delete_own_namespace(owner):
+    # By the owner label, not by name: a run that reused the run id must not lose its namespace to us.
+    # Matches nothing if this run was refused before creating one. Waits, so that no pod still
+    # terminates when the next run starts.
+    kubectl("delete", "namespace", "-l", f"{OWNER_LABEL}={owner}", "--wait=true", "--timeout=300s", timeout_s=330)
+
+
+def delete_stale_namespaces():
+    """Delete the namespaces of killed runs. A live run's is kept: the next run will refuse to start.
+
+    One already being deleted is waited for, whatever its heartbeat: its run is over, and was cut
+    while waiting for the deletion (a cancelled job)."""
+    stale = []
+    for namespace in json.loads(kubectl("get", "namespaces", "-l", EXPERIMENT_LABEL, "-o", "json"))["items"]:
+        name = namespace["metadata"]["name"]
+        beat = namespace["metadata"].get("annotations", {}).get(HEARTBEAT, "0")
+        silent_s = time.time() - float(beat)
+        if silent_s > STALE_AFTER_S or namespace["metadata"].get("deletionTimestamp"):
+            stale.append(name)
+        else:
+            print(f"{name} kept: its run is alive (last heartbeat {silent_s:.0f} s ago)", file=sys.stderr)
+    if stale:
+        kubectl("delete", "namespace", *stale, "--ignore-not-found", "--wait=true", "--timeout=300s", timeout_s=330)
+
+
+def check_no_other_run():
+    """Another run's namespace, or a killed run's: deleting either is for `kexp.py cleanup`, not for a run."""
+    namespaces = kubectl("get", "namespaces", "-l", EXPERIMENT_LABEL, "-o", "name").split()
+    if namespaces:
+        raise RuntimeError(f"another run in progress, or a killed run's leftovers, which `kexp.py cleanup` "
+                           f"deletes {STALE_AFTER_S} s after its last heartbeat: {' '.join(namespaces)}")
 
 
 def check_idle(workers):
@@ -338,13 +382,13 @@ def collect(out, namespace, started_at):
     (out / "decisions.jsonl").write_text("".join(ours))
 
 
-def run(name, out_root):
-    run_id = os.environ.get("KEXP_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    namespace = f"kexp-{run_id}"
+def run(name, run_id, namespace, owner, out_root):
     experiment, pods = manifests(name, namespace)
     nodes = worker_nodes()
     env = scheduler_env()
     images = running_images()  # before any output: a run without clear provenance is not started
+    check_no_other_run()
+    check_idle(nodes)
 
     out = out_root / f"{name}-{run_id}"
     out.mkdir(parents=True)
@@ -361,11 +405,10 @@ def run(name, out_root):
         "status": "aborted",
     }
 
-    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a cancelled job still cleans up
-    delete_experiment_namespaces()  # left over by a run that was killed
-    check_idle(nodes)
+    created = False
     try:
-        create_namespace(namespace)
+        create_namespace(namespace, owner)
+        created = True
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
         meta["status"] = "complete" if complete else "timeout"
     except Exception as error:
@@ -374,7 +417,8 @@ def run(name, out_root):
         meta["error"] = f"{type(error).__name__}: {error}"
     finally:
         (out / "meta.json").write_text(json.dumps(meta, indent=2))
-        collect(out, namespace, meta["started_at"])
+        if created:  # otherwise a namespace of that name, if any, is another run's
+            collect(out, namespace, meta["started_at"])
     return out, meta
 
 
@@ -544,8 +588,15 @@ def print_manifests(name):
 
 
 def run_and_report(name, out_root):
+    run_id = os.environ.get("KEXP_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    namespace = f"kexp-{run_id}"
+    owner = uuid.uuid4().hex
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a cancelled job still cleans up
+    stop = threading.Event()
+    heart = threading.Thread(target=heartbeat_until, args=(stop, owner), daemon=True)
+    heart.start()
     try:
-        out, meta = run(name, out_root)
+        out, meta = run(name, run_id, namespace, owner, out_root)
         text = report(out, meta)
         (out / "report.md").write_text(text)
         print(text)
@@ -553,8 +604,9 @@ def run_and_report(name, out_root):
         if "GITHUB_STEP_SUMMARY" in os.environ:
             Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
     finally:
+        stop.set()  # not joined: a beat in flight must not delay the deletion of a cancelled job
         # Last, after the report and whatever failed before: a leftover namespace would load the next run.
-        delete_experiment_namespaces()
+        delete_own_namespace(owner)
     return meta["status"] == "complete"
 
 
@@ -570,7 +622,7 @@ def main():
     if args.command == "manifests":
         return print_manifests(args.experiment)
     if args.command == "cleanup":
-        return delete_experiment_namespaces()
+        return delete_stale_namespaces()
     if not run_and_report(args.experiment, args.out):
         sys.exit(1)
 

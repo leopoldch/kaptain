@@ -13,7 +13,7 @@ vm 36,700 / 21,200, hdd 410 / 280, so a stress pod runs about a minute on the Pi
 python3 kexp.py list                      # every experiment, validated
 python3 kexp.py manifests drs-even        # the exact pods, as a Kubernetes List
 python3 kexp.py run smoke --out results   # on the master; KEXP_KUBECTL=kubectl elsewhere
-python3 kexp.py cleanup                   # delete namespaces left by a killed run
+python3 kexp.py cleanup                   # delete namespaces left by killed runs
 ```
 
 On GitHub: **Actions → Run experiment → Run workflow**, choose the experiment and optionally a
@@ -89,11 +89,14 @@ could not be collected shows as `missing`.
 
 Each run gets its own namespace, labelled `kaptain.io/experiment`, with a deny-all
 NetworkPolicy. Pods run as non-root, without a ServiceAccount token, with every capability
-dropped and the default seccomp profile. Any labelled namespace left by a killed run is
-deleted, and waited for, before the next run starts (and before the workflow deploys a policy)
-and after every run. A run refuses to start unless the experiment nodes are idle: no pod
-outside `kube-system` on one of them, and no pod using `kaptain-scheduler`. Background load, if ever
-wanted, has to be part of the experiment.
+dropped and the default seccomp profile. A run deletes its namespace, and waits for it, when it
+ends: only the one carrying its random `kaptain.io/run-owner` label, so a reused run id cannot
+make it delete another run's. It refuses to start while any labelled namespace exists, which
+may be another run's. A live run renews a `kaptain.io/heartbeat` annotation every minute;
+`kexp.py cleanup`, which the workflow calls before deploying a policy, deletes only the
+namespaces silent for more than 5 minutes, those of killed runs. A run also refuses to start
+unless the experiment nodes are idle: no pod outside `kube-system` on one of them, and no pod
+using `kaptain-scheduler`. Background load, if ever wanted, has to be part of the experiment.
 
 Experiments run on the nodes labelled `kaptain.io/experiment-node=true`, and only there: the pods
 select that label and tolerate the control-plane taint, and `kexp.py` measures and checks the
