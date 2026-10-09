@@ -167,12 +167,18 @@ are cosmetic. Main results need separate Linux VMs, ideally one per node.
 
 ## Checks
 
+The local LLM tagging pilot lives in [llm_tagging/](llm_tagging/README.md).
+It compares manually specified draft tags against Ollama or OpenAI responses,
+records latency/tokens, and runs independently of Kubernetes. Its protocol is
+in [llm-tagging-protocol.md](llm-tagging-protocol.md).
+
 ```bash
 make check            # gofmt, go vet, and every manifest through the Kubernetes YAML decoder
 ```
 
-There is no test suite: this is a research prototype. With one implementation of each policy
-there is also no parity to keep.
+The scheduler has no test suite: this is a research prototype. With one implementation of
+each policy there is also no parity to keep. The tagging pilot has separate experiment checks:
+`python3 -m unittest discover -s llm_tagging -v`.
 
 The extender this project used to carry as a second integration was measured against the
 plugin, lost, and was removed. It is frozen on `archive/extender`.

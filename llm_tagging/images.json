@@ -1,0 +1,103 @@
+{
+  "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662": {
+    "metadata": {
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_size_bytes": 2206402,
+      "layer_count": 1,
+      "entrypoint": null,
+      "cmd": [
+        "sh"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "exposed_ports": [],
+      "working_dir": null,
+      "user": null,
+      "history": [
+        "BusyBox 1.36.1 (glibc), Debian 13"
+      ]
+    },
+    "collection_ms": 431.8
+  },
+  "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6": {
+    "metadata": {
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_size_bytes": 55729325,
+      "layer_count": 2,
+      "entrypoint": [
+        "/usr/bin/stress-ng"
+      ],
+      "cmd": [
+        "--help"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "exposed_ports": [],
+      "working_dir": null,
+      "user": null,
+      "history": [
+        "# debian.sh --arch 'amd64' out/ 'trixie' '@1789689600'",
+        "COPY stress-ng/install-root/ / # buildkit",
+        "ENTRYPOINT [\"/usr/bin/stress-ng\"]",
+        "CMD [\"--help\"]"
+      ]
+    },
+    "collection_ms": 436.6
+  },
+  "nginxinc/nginx-unprivileged@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0": {
+    "metadata": {
+      "architecture": "amd64",
+      "os": "linux",
+      "compressed_size_bytes": 20963272,
+      "layer_count": 9,
+      "entrypoint": [
+        "/docker-entrypoint.sh"
+      ],
+      "cmd": [
+        "nginx",
+        "-g",
+        "daemon off;"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "NGINX_VERSION=1.27.5",
+        "PKG_RELEASE=1",
+        "DYNPKG_RELEASE=1",
+        "NJS_VERSION=0.8.10",
+        "NJS_RELEASE=1"
+      ],
+      "exposed_ports": [
+        "8080/tcp"
+      ],
+      "working_dir": "/",
+      "user": "101",
+      "history": [
+        "ARG GID=101",
+        "RUN |2 UID=101 GID=101 /bin/sh -c set -x     && addgroup -g $GID -S nginx || true     && adduser -S -D -H -u $UID -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx || true     && apkArch=\"$",
+        "RUN |2 UID=101 GID=101 /bin/sh -c sed -i 's,listen       80;,listen       8080;,' /etc/nginx/conf.d/default.conf     && sed -i '/user  nginx;/d' /etc/nginx/nginx.conf     && sed -i 's,\\(/var\\)\\{0\\,1\\}",
+        "COPY docker-entrypoint.sh / # buildkit",
+        "COPY 10-listen-on-ipv6-by-default.sh /docker-entrypoint.d # buildkit",
+        "COPY 15-local-resolvers.envsh /docker-entrypoint.d # buildkit",
+        "COPY 20-envsubst-on-templates.sh /docker-entrypoint.d # buildkit",
+        "COPY 30-tune-worker-processes.sh /docker-entrypoint.d # buildkit",
+        "ENTRYPOINT [\"/docker-entrypoint.sh\"]",
+        "EXPOSE map[8080/tcp:{}]",
+        "STOPSIGNAL SIGQUIT",
+        "USER 101",
+        "CMD [\"nginx\" \"-g\" \"daemon off;\"]",
+        "ENV NJS_VERSION=0.8.10",
+        "ENV NJS_RELEASE=1",
+        "ARG UID=101",
+        "ARG GID=101",
+        "USER root",
+        "RUN |2 UID=101 GID=101 /bin/sh -c set -x     && apkArch=\"$(cat /etc/apk/arch)\"     && nginxPackages=\"         nginx=${NGINX_VERSION}-r${PKG_RELEASE}         nginx-module-xslt=${NGINX_VERSION}-r${DYNPK",
+        "USER 101"
+      ]
+    },
+    "collection_ms": 367.7
+  }
+}

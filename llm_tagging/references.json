@@ -1,0 +1,15 @@
+{
+  "_about": "Work types deducible from the pod spec. Draft written by Claude from how each task is built; Léo must review before results are reported. Never sent to a model. The true duration is the one measured in measurements.json. timer = the spec states the duration explicitly (sleep N, --timeout).",
+  "c01": {"work_types": ["cpu"], "timer": false, "why": "CPU stressor; an operation count, no timer."},
+  "c02": {"work_types": ["memory"], "timer": false, "why": "Memory stressor on 128M; operation count, no timer."},
+  "c03": {"work_types": ["disk"], "timer": false, "why": "Disk write stressor; operation count, no timer."},
+  "c04": {"work_types": ["unknown"], "timer": true, "why": "Web server; the spec says nothing about traffic. Explicit sleep 60."},
+  "c05": {"work_types": ["wait"], "timer": true, "why": "sleep 60."},
+  "c06": {"work_types": ["wait"], "timer": true, "why": "sleep 2."},
+  "c07": {"work_types": ["wait"], "timer": true, "why": "sleep 20."},
+  "c08": {"work_types": ["wait"], "timer": true, "why": "sleep 90."},
+  "c09": {"work_types": ["cpu", "memory"], "timer": true, "why": "CPU and memory stressors, --timeout 20s."},
+  "c10": {"work_types": ["cpu", "disk"], "timer": true, "why": "CPU and disk stressors, --timeout 20s."},
+  "c11": {"work_types": ["unknown"], "timer": true, "why": "Web server, traffic not described. Explicit sleep 20."},
+  "c12": {"work_types": ["cpu", "disk"], "timer": false, "why": "256 MiB of random data then gzip, written to files; size known, speed not."}
+}

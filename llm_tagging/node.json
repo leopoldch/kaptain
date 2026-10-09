@@ -1,0 +1,18 @@
+{
+  "_about": "The candidate node, as a Kubernetes Node object would describe it: the machine where measurements.json was recorded. The hardware/* labels are the kind an admin or node-feature-discovery adds; they are not standard.",
+  "apiVersion": "v1",
+  "kind": "Node",
+  "metadata": {
+    "labels": {
+      "kubernetes.io/arch": "amd64",
+      "kubernetes.io/os": "linux",
+      "hardware/cpu-model": "AMD Ryzen 7 2700X",
+      "hardware/disk": "nvme-ssd"
+    }
+  },
+  "status": {
+    "capacity": {"cpu": "16", "memory": "15393Mi"},
+    "allocatable": {"cpu": "16", "memory": "15393Mi"},
+    "nodeInfo": {"architecture": "amd64", "operatingSystem": "linux", "kernelVersion": "7.0.0-38-generic", "containerRuntimeVersion": "docker"}
+  }
+}
