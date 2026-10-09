@@ -15,6 +15,7 @@ import threading
 import time
 import tomllib
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,9 +55,13 @@ ARRIVALS = {"fixed": fixed, "normal": normal, "poisson": poisson, "bursts": burs
 
 # Experiment -> pods.
 
-def kubectl(*args, stdin=None):
-    command = shlex.split(KUBECTL) + list(args)
-    result = subprocess.run(command, input=stdin, capture_output=True, text=True)
+def kubectl(*args, stdin=None, timeout_s=60):
+    # Bounded twice: kubectl gives up on the API server, and we give up on docker exec.
+    command = shlex.split(KUBECTL) + list(args) + [f"--request-timeout={timeout_s}s"]
+    try:
+        result = subprocess.run(command, input=stdin, capture_output=True, text=True, timeout=timeout_s + 10)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"kubectl {' '.join(args[:3])}: no answer after {timeout_s + 10} s") from None
     if result.returncode != 0:
         raise RuntimeError(f"kubectl {' '.join(args[:3])}: {result.stderr.strip()}")
     return result.stdout
@@ -129,22 +134,30 @@ def worker_nodes():
             for n in nodes if not n["spec"].get("taints")}
 
 
-def sample(nodes, telemetry):
-    for node in nodes:
-        try:
-            raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary")
-            cpu = json.loads(raw)["node"]["cpu"]
-            usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
-            # Null until the kubelet has two readings to compute a rate from.
-            if isinstance(usage, bool) or not isinstance(usage, (int, float)):
-                raise ValueError(f"usageNanoCores is {usage!r}")
-        except (RuntimeError, ValueError, KeyError, TypeError) as error:
-            # Left out, never written as zero; the report counts the samples per node.
-            print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
-            continue
+def sample_node(node):
+    try:
+        raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary", timeout_s=SAMPLE_EVERY_S)
+        cpu = json.loads(raw)["node"]["cpu"]
+        usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
+        # Null until the kubelet has two readings to compute a rate from.
+        if isinstance(usage, bool) or not isinstance(usage, (int, float)):
+            raise ValueError(f"usageNanoCores is {usage!r}")
+    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+        # Left out, never written as zero; the report counts the samples per node.
+        print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
+        return None
 
-        # The kubelet refreshes every 10-15 s: its timestamp tells how old a value is.
-        telemetry.writerow([now(), node, usage / 1e9, kubelet_time])
+    # The kubelet refreshes every 10-15 s: its timestamp tells how old a value is.
+    return [now(), node, usage / 1e9, kubelet_time]
+
+
+def sample(nodes, telemetry):
+    # All nodes at once: one after the other, a round took longer than the sampling period,
+    # and a slow kubelet delayed every node behind it.
+    with ThreadPoolExecutor(max_workers=len(nodes)) as pool:
+        for row in pool.map(sample_node, nodes):
+            if row:
+                telemetry.writerow(row)
 
 
 def sample_until(stop, nodes, telemetry):
@@ -271,7 +284,7 @@ def create_namespace(namespace):
 
 def delete_experiment_namespaces():
     # Waits, so that the next run never starts while previous pods are still terminating.
-    kubectl("delete", "namespace", "-l", EXPERIMENT_LABEL, "--wait=true", "--timeout=300s")
+    kubectl("delete", "namespace", "-l", EXPERIMENT_LABEL, "--wait=true", "--timeout=300s", timeout_s=330)
 
 
 def check_idle(workers):
