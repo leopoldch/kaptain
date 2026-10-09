@@ -247,7 +247,8 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
     stop = threading.Event()
     opened = threading.Event()
 
-    # The server ends the watch after timeoutSeconds, so it cannot outlive the run inside the K3s container.
+    # Terminating docker exec leaves kubectl running in the K3s container: it lasts until the server
+    # ends the watch, timeoutSeconds after it opened. Harmless, its namespace is gone and streams nothing.
     watch_url = f"/api/v1/namespaces/{namespace}/pods?watch=true&timeoutSeconds={timeout_s}"
     watch = subprocess.Popen(shlex.split(KUBECTL) + ["get", "--raw", watch_url],
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
