@@ -74,6 +74,9 @@ API server and kubelet timestamps have 1 s resolution and come from different ma
 clocks. Images are pulled on first use, so the first pod of a type on a node also pays the
 download.
 
+The first pod is submitted only once the watch has streamed a probe pod, `kexp-watch-probe`,
+which names no existing scheduler, so it never runs, and is deleted at once.
+
 Placement statistics require an unbound `ADDED` event followed by a bound event for every
 expected pod. Otherwise the report shows `missing` or `incomplete` with the coverage (n/N pods),
 without placement statistics. A watch that stops early is not resumed, since replayed events

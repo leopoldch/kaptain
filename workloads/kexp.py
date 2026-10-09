@@ -25,6 +25,7 @@ ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
 EXPERIMENT_NODE = "kaptain.io/experiment-node"  # =true on the nodes experiments run on, master included
+WATCH_PROBE = "kexp-watch-probe"  # a pod no scheduler takes, streamed once the watch is open
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
 
@@ -197,7 +198,7 @@ def wait(namespace, expected, deadline):
     return False
 
 
-def watch_pods(process, path, stop):
+def watch_pods(process, path, stop, opened):
     """Time, on the runner's clock, every change the API server streams for our pods."""
     with path.open("w", newline="") as handle:
         writer = csv.writer(handle)
@@ -212,23 +213,41 @@ def watch_pods(process, path, stop):
                 print(f"pod watch: {event['object'].get('message', '')}", file=sys.stderr)
                 break
             pod = event["object"]
+            if pod["metadata"]["name"] == WATCH_PROBE:
+                opened.set()
+                continue
             writer.writerow([time.time(), event["type"], pod["metadata"]["name"], pod["spec"].get("nodeName", "")])
         if not stop.is_set():
             # Not resumed: events replayed after a gap would carry the time they arrive, not when they happened.
             writer.writerow([time.time(), WATCH_ENDED, "", ""])
 
 
+def confirm_watch(namespace, template, opened):
+    """Wait until the watch streams a probe pod: from then on, every pod of ours is seen as it happens.
+
+    Before that, a pod could reach the watch only in its initial list, already bound."""
+    probe = copy.deepcopy(template)
+    probe["metadata"] = {"name": WATCH_PROBE, "namespace": namespace}
+    probe["spec"]["schedulerName"] = "kexp-none"  # no such scheduler: Pending, never run, deleted at once
+    kubectl("create", "-f", "-", stdin=json.dumps(probe))
+    try:
+        if not opened.wait(30):
+            raise RuntimeError("the pod watch streamed nothing within 30 s")
+    finally:
+        kubectl("-n", namespace, "delete", "pod", WATCH_PROBE, "--wait=false")
+
+
 def run_pods(out, namespace, pods, nodes, timeout_s):
     deadline = time.monotonic() + timeout_s
     stop = threading.Event()
+    opened = threading.Event()
 
     # The server ends the watch after timeoutSeconds, so it cannot outlive the run inside the K3s container.
     watch_url = f"/api/v1/namespaces/{namespace}/pods?watch=true&timeoutSeconds={timeout_s}"
     watch = subprocess.Popen(shlex.split(KUBECTL) + ["get", "--raw", watch_url],
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
-    watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv", stop))
+    watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv", stop, opened))
     watcher.start()
-    time.sleep(2)  # let the watch open before the first pod
 
     with (out / "telemetry.csv").open("w", newline="") as handle:
         telemetry = csv.writer(handle)
@@ -236,6 +255,7 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
         sampler = threading.Thread(target=sample_until, args=(stop, nodes, telemetry))
         sampler.start()
         try:
+            confirm_watch(namespace, pods[0], opened)
             submit(pods)
             return wait(namespace, len(pods), deadline)
         finally:
