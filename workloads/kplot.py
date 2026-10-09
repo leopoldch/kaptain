@@ -19,9 +19,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from kexp import placement_waits, pod_times, seconds
+from kexp import makespan, placement_waits, pod_times, read_decisions, seconds
 
-# Fixed slots, so a strategy keeps its colour whatever runs are plotted together.
+# Fixed slots, so these strategies keep their colour whatever runs are plotted together;
+# any other takes the next free slot, in the order the runs are sorted.
 PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 STRATEGIES = ["dummy-random", "largest-cpu-capacity", "least-allocated", "least-used"]
 LINESTYLES = ["-", "--", ":", "-."]  # repeated runs of one strategy share its colour
@@ -61,41 +62,33 @@ def read_run(folder):
     pods = json.loads(pods_path.read_text())["items"] if pods_path.exists() else []
     succeeded = [pod_times(pod) for pod in pods if pod["status"]["phase"] == "Succeeded"]
     waits, _ = placement_waits(folder)
+    decisions = read_decisions(folder) or []
 
-    # As in the report: only when every pod succeeded.
-    makespan = None
-    if succeeded and len(succeeded) == meta["pods"]:
-        makespan = max(p["finished"] for p in succeeded) - min(p["created"] for p in succeeded)
-
-    decisions = []
-    decisions_path = folder / "decisions.jsonl"
-    if decisions_path.exists():
-        lines = [json.loads(line) for line in decisions_path.read_text().splitlines()]
-        decisions = [line for line in lines if line["event"] == "decision"]
+    telemetry = []
+    if (folder / "telemetry.csv").exists():
+        with (folder / "telemetry.csv").open() as handle:
+            telemetry = list(csv.DictReader(handle))
 
     # Time zero is the first pod created; before any pod exists, the run's start.
     start = min((seconds(p["metadata"]["creationTimestamp"]) for p in pods), default=seconds(meta["started_at"]))
-    return {"meta": meta, "makespan": makespan, "pods": succeeded, "waits": waits, "start": start,
-            "plugin_ms": [d["durations_ms"]["total"] for d in decisions],
+    return {"meta": meta, "makespan": makespan(succeeded, meta["pods"]), "pods": succeeded, "waits": waits,
+            "start": start, "plugin_ms": [d["durations_ms"]["total"] for d in decisions],
             "fallbacks": sum(1 for d in decisions if d["fallback"]),
-            "cpu": usage_series(folder, meta["node_cores"], start, "cpu_cores", "kubelet_time"),
+            "cpu": usage_series(telemetry, meta["node_cores"], start, "cpu_cores", "kubelet_time"),
             # Runs before memory was sampled have neither the column nor the allocatable memory.
-            "memory": usage_series(folder, meta.get("node_memory_bytes", {}), start, "memory_bytes", "memory_time")}
+            "memory": usage_series(telemetry, meta.get("node_memory_bytes", {}), start, "memory_bytes", "memory_time")}
 
 
-def usage_series(folder, allocatable, start, column, time_column):
+def usage_series(telemetry, allocatable, start, column, time_column):
     """% of allocatable per node, at the kubelet's own time, each reading once.
 
     The sampler asks every 5 s but the kubelet refreshes every 10-15 s: between two
     refreshes it returns the same reading, which would draw as a flat step."""
     series = {node: {} for node in allocatable}
-    path = folder / "telemetry.csv"
-    if path.exists():
-        with path.open() as handle:
-            for row in csv.DictReader(handle):
-                if row["node"] in series and row.get(column):
-                    at = seconds(row[time_column]) - start
-                    series[row["node"]][at] = 100 * float(row[column]) / allocatable[row["node"]]
+    for row in telemetry:
+        if row["node"] in series and row.get(column):
+            at = seconds(row[time_column]) - start
+            series[row["node"]][at] = 100 * float(row[column]) / allocatable[row["node"]]
     return {node: sorted(points.items()) for node, points in series.items()}
 
 
@@ -120,13 +113,13 @@ def imbalance_series(cpu, left_out):
 
 
 def label(runs):
-    """The strategy alone when it tells the runs apart; otherwise the run id too."""
-    strategies = [run["meta"]["strategy"] for run in runs]
-    experiments = {run["meta"]["experiment"] for run in runs}
+    """The strategy alone when it tells the runs apart; the experiment, then the run id, when needed."""
+    pairs = [(run["meta"]["experiment"], run["meta"]["strategy"]) for run in runs]
+    experiments = {experiment for experiment, _ in pairs}
     for run in runs:
         meta = run["meta"]
         text = meta["strategy"]
-        if strategies.count(meta["strategy"]) > 1:
+        if pairs.count((meta["experiment"], meta["strategy"])) > 1:
             text += f" · {meta['run_id']}"
         if len(experiments) > 1:
             text = f"{meta['experiment']} · {text}"
@@ -171,8 +164,9 @@ def plot_distribution(runs, colours, key, counted, xlabel, path):
         ax.scatter(values, jitter(y, len(values)), s=10, color=colours[run["meta"]["strategy"]], alpha=0.7,
                    linewidths=0, zorder=3)
     ax.set_yticks(range(len(rows)), [f"{run['label']}\n{counted(run)}" for run in rows])
-    present = [run[key] for run in runs if run[key]]
-    if present and max(map(max, present)) > 20 * min(map(min, present)):
+    values = [value for run in runs for value in run[key]]
+    # Never with a zero or negative value: a log axis would hide it without a word.
+    if values and min(values) > 0 and max(values) > 20 * min(values):
         ax.set_xscale("log")
     ax.set_xlabel(xlabel)
     ax.grid(axis="y", visible=False)
@@ -181,8 +175,10 @@ def plot_distribution(runs, colours, key, counted, xlabel, path):
 
 def plot_completion(runs, node_colours, out):
     """Every pod, by workload: how long it took, and on which node."""
+    path = out / "completion.png"
     workloads = sorted({pod["workload"] for run in runs for pod in run["pods"]})
     if not workloads:
+        skip(path, "no run has a succeeded pod")
         return
     fig, axes = plt.subplots(1, len(workloads), figsize=(3.2 * len(workloads) + 1.5, 0.55 * len(runs) + 1.6),
                              sharey=True, squeeze=False)
@@ -199,7 +195,7 @@ def plot_completion(runs, node_colours, out):
     axes[0, 0].set_ylim(-0.6, len(rows) - 0.4)
     fig.supxlabel("completion time (s): pod created → container finished, succeeded pods", fontsize=9)
     node_legend(fig, node_colours, marker="o")
-    save(fig, out / "completion.png", legend=True)
+    save(fig, path, legend=True)
 
 
 def plot_pods_per_node(runs, node_colours, out):
@@ -226,19 +222,19 @@ def plot_pods_per_node(runs, node_colours, out):
 
 def plot_imbalance(runs, colours, left_out, out):
     fig, ax = plt.subplots(figsize=(9, 3.4))
-    seen = {}
+    seen, nodes = {}, set()
     for run in runs:
         strategy = run["meta"]["strategy"]
         series = imbalance_series(run["cpu"], left_out)
         if not series:
             continue
+        nodes.update(node for node, points in run["cpu"].items() if points and node not in left_out)
         mean = statistics.fmean(value for _, value in series)
         style_index = seen.setdefault(strategy, -1) + 1
         seen[strategy] = style_index
         ax.plot(*zip(*series), color=colours[strategy], linewidth=1.5,
                 linestyle=LINESTYLES[style_index % len(LINESTYLES)], label=f"{run['label']} (mean {mean:.1f})")
-    nodes = sorted({node for run in runs for node in run["cpu"]} - set(left_out))
-    ax.set_title(f"nodes: {', '.join(nodes)}", loc="left", fontsize=8, color=MUTED)
+    ax.set_title(f"nodes: {', '.join(sorted(nodes))}", loc="left", fontsize=8, color=MUTED)
     ax.set_xlabel("seconds since the first pod was created (kubelet time)")
     ax.set_ylabel("std. dev. of CPU % across nodes")
     ax.set_ylim(bottom=0)
@@ -251,7 +247,7 @@ def plot_imbalance(runs, colours, left_out, out):
 
 def plot_usage(runs, node_colours, key, what, path):
     if not any(points for run in runs for points in run[key].values()):
-        print(f"{path}: skipped, no run has {what} samples")
+        skip(path, f"no run has {what} samples")
         return
     fig, axes = plt.subplots(len(runs), 1, figsize=(9, 2.3 * len(runs) + 0.6), sharex=True, sharey=True,
                              squeeze=False)
@@ -283,6 +279,12 @@ def node_legend(fig, node_colours, marker=None):
                bbox_to_anchor=(0.5, 1.0))
 
 
+def skip(path, reason):
+    # A figure left from an earlier batch would pass for one of this batch.
+    path.unlink(missing_ok=True)
+    print(f"{path}: skipped, {reason}")
+
+
 def save(fig, path, legend=False):
     # A figure-wide legend sits above the axes: keep two lines of it clear.
     top = 1 - 0.4 / fig.get_figheight() if legend else 1
@@ -307,6 +309,9 @@ def main():
     colours = {run["meta"]["strategy"]: colour(run["meta"]["strategy"], known) for run in runs}
     nodes = sorted({node for run in runs for node in run["meta"]["node_cores"]})
     node_colours = {node: PALETTE[i % len(PALETTE)] for i, node in enumerate(nodes)}
+    unknown = sorted(set(args.imbalance_without) - set(nodes))
+    if unknown:
+        parser.error(f"--imbalance-without: no run has node {', '.join(unknown)} (nodes: {', '.join(nodes)})")
 
     style()
     args.out.mkdir(parents=True, exist_ok=True)

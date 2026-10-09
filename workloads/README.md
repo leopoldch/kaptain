@@ -102,7 +102,9 @@ uv run kplot.py runs/ --out results/plots
 ```
 
 Runs are sorted by experiment, then strategy, and labelled by strategy, plus the run id when a
-strategy appears more than once. A strategy keeps its colour across figures and invocations.
+strategy appears more than once. The four strategies of the workflow keep their colour across
+figures and invocations; any other takes the next free one, so its colour depends on the runs
+plotted with it.
 
 | Figure | Shows |
 |---|---|
@@ -120,7 +122,7 @@ kubelet that refreshes every 10–15 s answers the same reading twice.
 
 The imbalance is DRS's Imbalance_t restricted to CPU, at each instant, where the report gives the
 std. dev. of the run means: two nodes busy in turn balance out in the latter, not in the former.
-`--imbalance-without alex-master` (repeatable) leaves a node out of it, such as the master,
+`--imbalance-without alex-master` (repeatable, checked against the runs' nodes) leaves a node out of it, such as the master,
 whose control plane keeps it busy whatever the policy.
 
 ## Isolation

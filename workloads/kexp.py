@@ -133,20 +133,21 @@ def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def cores(quantity):
-    if quantity.endswith("m"):
-        return int(quantity[:-1]) / 1000
-    return float(quantity)
+SUFFIXES = {"": 1, "n": 1e-9, "u": 1e-6, "m": 1e-3, "k": 1e3, "M": 1e6, "G": 1e9, "T": 1e12, "P": 1e15, "E": 1e18,
+            "Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40, "Pi": 2**50, "Ei": 2**60}
+# An exponent before the suffixes: "1E3" is a thousand, "1E" an exa.
+QUANTITY = re.compile(r"([+-]?(?:\d+\.?\d*|\.\d+))([eE][+-]?\d+|[KMGTPE]i|[numkMGTPE]|)")
 
 
-BYTE_SUFFIXES = {"Ki": 2**10, "Mi": 2**20, "Gi": 2**30, "Ti": 2**40, "k": 10**3, "M": 10**6, "G": 10**9, "T": 10**12}
-
-
-def bytes_of(quantity):
-    for suffix, factor in BYTE_SUFFIXES.items():
-        if quantity.endswith(suffix):
-            return int(float(quantity[:-len(suffix)]) * factor)
-    return int(quantity)
+def quantity(text):
+    """A Kubernetes quantity as a number: 500m, 4, 3884104Ki, 4e9."""
+    match = QUANTITY.fullmatch(text)
+    if not match:
+        raise ValueError(f"not a Kubernetes quantity: {text!r}")
+    number, suffix = match.groups()
+    if suffix[:1] in ("e", "E") and len(suffix) > 1:
+        return float(number) * 10 ** int(suffix[1:])
+    return float(number) * SUFFIXES[suffix]
 
 
 def worker_nodes():
@@ -159,29 +160,37 @@ def worker_nodes():
 
 
 def sample_node(node):
-    """One telemetry row, and one network row per interface, from a single kubelet answer."""
+    """One telemetry row, and one network row per interface, from a single kubelet answer.
+
+    Each part is kept on its own: the CPU missing leaves the row out, memory missing leaves its
+    cells empty, and the network counters are written either way."""
     try:
         raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary", timeout_s=SAMPLE_TIMEOUT_S)
         stats = json.loads(raw)["node"]
+    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+        print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
+        return None, []
+
+    # The kubelet refreshes every 10-15 s: its timestamps tell how old each value is.
+    at = now()
+    # Every interface, cumulative bytes: which one carries the traffic differs between nodes.
+    network = stats.get("network") or {}
+    interfaces = [[at, node, i.get("name", ""), i.get("rxBytes", ""), i.get("txBytes", ""), network.get("time", "")]
+                  for i in network.get("interfaces") or []]
+
+    try:
         cpu = stats["cpu"]
         usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
         # Null until the kubelet has two readings to compute a rate from.
         if isinstance(usage, bool) or not isinstance(usage, (int, float)):
             raise ValueError(f"usageNanoCores is {usage!r}")
-    except (RuntimeError, ValueError, KeyError, TypeError) as error:
+    except (ValueError, KeyError, TypeError) as error:
         # Left out, never written as zero; the report counts the samples per node.
-        print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
-        return None, []
+        print(f"CPU sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
+        return None, interfaces
 
-    # The kubelet refreshes every 10-15 s: its timestamps tell how old each value is.
-    # Memory or network missing leaves its cells empty: the CPU reading is kept.
-    at = now()
     memory = stats.get("memory") or {}
     row = [at, node, usage / 1e9, kubelet_time, memory.get("workingSetBytes", ""), memory.get("time", "")]
-    # Every interface, cumulative bytes: which one carries the traffic differs between nodes.
-    network = stats.get("network") or {}
-    interfaces = [[at, node, i.get("name", ""), i.get("rxBytes", ""), i.get("txBytes", ""), network.get("time", "")]
-                  for i in network.get("interfaces") or []]
     return row, interfaces
 
 
@@ -190,10 +199,10 @@ def sample_until(stop, node, telemetry, network, lock):
     # samples. It is waited for, not skipped, since it is slow when its node is busiest.
     while not stop.wait(SAMPLE_EVERY_S):
         row, interfaces = sample_node(node)
-        if row:
-            with lock:
+        with lock:
+            if row:
                 telemetry.writerow(row)
-                network.writerows(interfaces)
+            network.writerows(interfaces)
 
 
 def all_finished(namespace, expected):
@@ -419,6 +428,9 @@ def run(name, run_id, namespace, owner, out_root):
     images = running_images()  # before any output: a run without clear provenance is not started
     check_no_other_run()
     check_idle(nodes)
+    # Before any output too: a quantity that does not parse must not leave an empty run folder.
+    node_cores = {node: quantity(allocatable["cpu"]) for node, allocatable in nodes.items()}
+    node_memory = {node: int(quantity(allocatable["memory"])) for node, allocatable in nodes.items()}
 
     out = out_root / f"{name}-{run_id}"
     out.mkdir(parents=True)
@@ -430,8 +442,8 @@ def run(name, run_id, namespace, owner, out_root):
         "strategy": env["KAPTAIN_STRATEGY"],
         "policy_version": env["POLICY_VERSION"],
         "images": images,
-        "node_cores": {node: cores(allocatable["cpu"]) for node, allocatable in nodes.items()},
-        "node_memory_bytes": {node: bytes_of(allocatable["memory"]) for node, allocatable in nodes.items()},
+        "node_cores": node_cores,
+        "node_memory_bytes": node_memory,
         "started_at": now(),
         "status": "aborted",
     }
@@ -464,6 +476,22 @@ def seconds(stamp):
 
 def p95(values):
     return sorted(values)[round(0.95 * (len(values) - 1))]
+
+
+def read_decisions(out):
+    """The plugin's decision lines for the run; None when they were not collected."""
+    path = out / "decisions.jsonl"
+    if not path.exists():
+        return None
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    return [line for line in lines if line["event"] == "decision"]
+
+
+def makespan(succeeded, expected):
+    """First pod created -> last pod finished, in s; None unless every expected pod succeeded."""
+    if not succeeded or len(succeeded) != expected:
+        return None
+    return max(row["finished"] for row in succeeded) - min(row["created"] for row in succeeded)
 
 
 def pod_times(pod):
@@ -550,25 +578,18 @@ def report(out, meta):
     if not pods_path.exists():
         pod_counts = "missing"
 
-    decisions_path = out / "decisions.jsonl"
-    log_lines = []
-    if decisions_path.exists():
-        log_lines = [json.loads(line) for line in decisions_path.read_text().splitlines()]
-    decisions = [line for line in log_lines if line["event"] == "decision"]
-    durations = [d["durations_ms"]["total"] for d in decisions]
+    decisions = read_decisions(out)
+    durations = [d["durations_ms"]["total"] for d in decisions or []]
     plugin_time = "missing"
     if durations:
         plugin_time = f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms"
-    fallbacks = sum(1 for d in decisions if d["fallback"])
-    decision_counts = f"{len(decisions)}, fallbacks: {fallbacks}"
-    if not decisions_path.exists():
-        decision_counts = "missing"
+    fallbacks = sum(1 for d in decisions or [] if d["fallback"])
+    decision_counts = "missing" if decisions is None else f"{len(decisions)}, fallbacks: {fallbacks}"
 
-    makespan = "missing" if not pods_path.exists() else "incomplete"
-    if succeeded and not failed and not unfinished:
-        first = min(row["created"] for row in succeeded)
-        last = max(row["finished"] for row in succeeded)
-        makespan = f"{last - first:.0f} s"
+    span = makespan(succeeded, meta["pods"])
+    makespan_text = "missing" if not pods_path.exists() else "incomplete"
+    if span is not None:
+        makespan_text = f"{span:.0f} s"
     waits, watch_ended = placement_waits(out)
     coverage = f"{len(waits)}/{meta['pods']} pods"
     if watch_ended:
@@ -592,7 +613,7 @@ def report(out, meta):
         f"- Scheduler `{scheduler['image']}` (digest `{short(scheduler['digest'])}`){warning}; "
         f"decider `{decider['image']}` (digest `{short(decider['digest'])}`).",
         f"- Pods: {pod_counts}, of {meta['pods']}.",
-        f"- Makespan, first pod created → last pod finished: **{makespan}**.",
+        f"- Makespan, first pod created → last pod finished: **{makespan_text}**.",
         f"- Placement wait, pod created → bound (API watch): {placement}.",
         f"- Decisions: {decision_counts}, plugin time {plugin_time}.",
         "",
