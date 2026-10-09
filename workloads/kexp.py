@@ -41,14 +41,18 @@ def fixed(a, count, rng):
     return [i * a["interval_s"] for i in range(count)]
 
 
+def from_gaps(gaps):
+    # sum(), not a running total: since Python 3.12 it compensates rounding, and any other
+    # summation shifts seeded arrival times by a few ulps.
+    return [sum(gaps[:i]) for i in range(len(gaps) + 1)]
+
+
 def normal(a, count, rng):
-    gaps = [max(0, rng.gauss(a["mean_s"], a["stddev_s"])) for _ in range(count - 1)]
-    return [sum(gaps[:i]) for i in range(count)]
+    return from_gaps([max(0, rng.gauss(a["mean_s"], a["stddev_s"])) for _ in range(count - 1)])
 
 
 def poisson(a, count, rng):
-    gaps = [rng.expovariate(1 / a["mean_s"]) for _ in range(count - 1)]
-    return [sum(gaps[:i]) for i in range(count)]
+    return from_gaps([rng.expovariate(1 / a["mean_s"]) for _ in range(count - 1)])
 
 
 def bursts(a, count, rng):
