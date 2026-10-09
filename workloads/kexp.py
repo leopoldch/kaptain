@@ -233,12 +233,24 @@ def scheduler_env():
 
 def running_images():
     """The images actually running, by digest: the deployment spec alone can be stale."""
-    selector = "app in (kaptain-scheduler,kaptain-decider)"
+    apps = ("kaptain-scheduler", "kaptain-decider")
+    selector = f"app in ({','.join(apps)})"
     pods = json.loads(kubectl("-n", "kube-system", "get", "pods", "-l", selector, "-o", "json"))["items"]
-    images = {}
+    versions = {app: set() for app in apps}
     for pod in pods:
-        status = pod["status"]["containerStatuses"][0]
-        images[pod["metadata"]["labels"]["app"]] = {"image": status["image"], "digest": status["imageID"]}
+        # A pod of the previous rollout can still be terminating, and a new one not started yet.
+        statuses = pod["status"].get("containerStatuses") or [{}]
+        if pod["metadata"].get("deletionTimestamp") or not statuses[0].get("ready"):
+            continue
+        versions[pod["metadata"]["labels"]["app"]].add((statuses[0]["image"], statuses[0]["imageID"]))
+
+    images = {}
+    for app, found in versions.items():
+        if len(found) != 1:
+            # None: nothing to measure. Several: a rollout in progress, the run would mix policies.
+            raise RuntimeError(f"{app}: {len(found)} versions ready, expected exactly one")
+        image, digest = found.pop()
+        images[app] = {"image": image, "digest": digest}
     return images
 
 
@@ -292,6 +304,7 @@ def run(name, out_root):
     experiment, pods = manifests(name, namespace)
     nodes = worker_nodes()
     env = scheduler_env()
+    images = running_images()  # before any output: a run without clear provenance is not started
 
     out = out_root / f"{name}-{run_id}"
     out.mkdir(parents=True)
@@ -302,7 +315,7 @@ def run(name, out_root):
         "pods": len(pods),
         "strategy": env["KAPTAIN_STRATEGY"],
         "policy_version": env["POLICY_VERSION"],
-        "images": running_images(),
+        "images": images,
         "node_cores": nodes,
         "started_at": now(),
         "status": "aborted",
