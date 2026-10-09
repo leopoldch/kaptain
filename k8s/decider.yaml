@@ -27,6 +27,12 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
       containers:
         - name: decider
           image: kaptain-decider:dev   # local image loaded into kind
@@ -40,6 +46,9 @@ spec:
             - containerPort: 8888
           readinessProbe:
             httpGet: { path: /healthz, port: 8888 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
 ---
 apiVersion: v1
 kind: Service

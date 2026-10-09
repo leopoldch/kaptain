@@ -1,0 +1,19 @@
+name = "drs-random"
+description = "DRS random workload: cpu/memory/disk at 1:1:1, inter-arrival N(20 s, 1 s)"
+source = "Jian et al. 2024 (DRS), section 5.2, Random workload"
+seed = 7
+count = 60
+timeout_s = 3600
+
+[arrival]
+process = "normal"
+mean_s = 20
+stddev_s = 1
+
+[mix]
+cpu = 1
+memory = 1
+disk = 1
+
+[resources]
+cpu_millis = [200, 500]

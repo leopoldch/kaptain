@@ -1,0 +1,31 @@
+# No-op pod: isolates the cost of the decision (Zhou et al. 2026).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: noop
+  labels:
+    kaptain.io/workload: noop
+spec:
+  schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: work
+      image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      command: [sleep, "60"]
+      resources:
+        requests: {cpu: 500m, memory: 16Mi}
+        limits: {cpu: 500m, memory: 16Mi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}

@@ -11,6 +11,8 @@ import (
 
 func main() {
 	files, _ := filepath.Glob("k8s/*.yaml")
+	pods, _ := filepath.Glob("workloads/pods/*.yaml")
+	files = append(files, pods...)
 	files = append(files, "kind-cluster.yaml")
 	failed := false
 	for _, f := range files {

@@ -47,6 +47,8 @@ cleanup_images() {
     [[ $old == "$image" || $old == "$previous_image" || $old == *':<none>' ]] && continue
     docker image rm "$old" || return 1
   done
+  # Untagged leftovers of earlier decider builds (failed or superseded): ours by label only.
+  docker image prune -f --filter label=kaptain.io/component=decider >/dev/null || return 1
   images=$(docker exec "$container" ctr images list -q) || return 1
   for reference in $images; do
     old=${reference#docker.io/library/}
@@ -107,7 +109,8 @@ previous_image=${previous_image#docker.io/library/}
 echo "Previous revisions: decider=$decider_revision scheduler=$scheduler_revision"
 
 # Build and check the image, then import it into K3s.
-docker build --label "org.opencontainers.image.revision=$commit" -t "$image" bridge/
+docker build --label "org.opencontainers.image.revision=$commit" --label kaptain.io/component=decider \
+  -t "$image" bridge/
 docker run --rm --network none -e "STRATEGY=$strategy" "$image" \
   uv run --no-sync python -c 'import app; print(app.healthz())'
 docker save "$image" | docker exec -i "$container" ctr images import -

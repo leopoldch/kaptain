@@ -1,0 +1,20 @@
+name = "decision-cost"
+description = "Tiny no-op pods: 30 at one per second, then three bursts of ten"
+source = "Zhou et al. 2026 (no-op pods); September 2026 pilot shape"
+seed = 7
+timeout_s = 900
+
+[arrival]
+process = "bursts"
+steady_count = 30
+steady_interval_s = 1
+bursts = 3
+burst_size = 10
+burst_gap_s = 10
+
+[mix]
+noop = 1
+
+[resources]
+cpu_millis = [10, 10]
+memory_mib = [16, 16]

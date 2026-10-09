@@ -1,0 +1,16 @@
+name = "smoke"
+description = "Six no-op pods, two seconds apart: checks submission, collection and the report"
+source = "none (pipeline check)"
+seed = 7
+count = 6
+timeout_s = 600
+
+[arrival]
+process = "fixed"
+interval_s = 2
+
+[mix]
+noop = 1
+
+[resources]
+cpu_millis = [50, 50]

@@ -1,0 +1,17 @@
+name = "packing-random"
+description = "No-op pods with random CPU and memory requests, Poisson arrivals every 5 s on average"
+source = "Christensen et al. 2025 (random pod sizes), adapted"
+seed = 7
+count = 60
+timeout_s = 1800
+
+[arrival]
+process = "poisson"
+mean_s = 5
+
+[mix]
+noop = 1
+
+[resources]
+cpu_millis = [100, 1000]
+memory_mib = [64, 1024]

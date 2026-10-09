@@ -1,0 +1,16 @@
+name = "web"
+description = "NGINX pods serving for 60 s, Poisson arrivals every 10 s on average"
+source = "Zhou et al. 2026 (NGINX web services), adapted"
+seed = 7
+count = 30
+timeout_s = 1800
+
+[arrival]
+process = "poisson"
+mean_s = 10
+
+[mix]
+web = 1
+
+[resources]
+cpu_millis = [100, 300]
