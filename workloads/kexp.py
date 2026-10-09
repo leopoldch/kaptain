@@ -23,6 +23,7 @@ KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --s
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
+WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
 
 
@@ -176,15 +177,25 @@ def wait(namespace, expected, deadline):
     return False
 
 
-def watch_pods(process, path):
+def watch_pods(process, path, stop):
     """Time, on the runner's clock, every change the API server streams for our pods."""
     with path.open("w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["time", "event", "pod", "node"])
         for line in process.stdout:
-            event = json.loads(line)
+            try:
+                event = json.loads(line)
+            except ValueError:
+                break  # a line cut when the stream closes
+            if event["type"] == "ERROR":
+                # A Status, not a Pod, after which the server closes the watch.
+                print(f"pod watch: {event['object'].get('message', '')}", file=sys.stderr)
+                break
             pod = event["object"]
             writer.writerow([time.time(), event["type"], pod["metadata"]["name"], pod["spec"].get("nodeName", "")])
+        if not stop.is_set():
+            # Not resumed: events replayed after a gap would carry the time they arrive, not when they happened.
+            writer.writerow([time.time(), WATCH_ENDED, "", ""])
 
 
 def run_pods(out, namespace, pods, nodes, timeout_s):
@@ -195,7 +206,7 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
     watch_url = f"/api/v1/namespaces/{namespace}/pods?watch=true&timeoutSeconds={timeout_s}"
     watch = subprocess.Popen(shlex.split(KUBECTL) + ["get", "--raw", watch_url],
                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, text=True)
-    watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv"))
+    watcher = threading.Thread(target=watch_pods, args=(watch, out / "watch.csv", stop))
     watcher.start()
     time.sleep(2)  # let the watch open before the first pod
 
@@ -346,18 +357,22 @@ def built_from_commit(image):
 
 
 def placement_waits(out):
-    """Pod first seen by the watch -> first seen with a node, in ms, both on the runner's clock."""
+    """Pod first seen by the watch -> first seen with a node, in ms, both on the runner's clock.
+
+    Also tells whether the watch stopped before the run did."""
     created, bound = {}, {}
+    ended = False
     path = out / "watch.csv"
     if not path.exists():
-        return []
+        return [], ended
     with path.open() as handle:
         for row in csv.DictReader(handle):
+            ended = ended or row["event"] == WATCH_ENDED
             if row["event"] == "ADDED" and not row["node"]:
                 created.setdefault(row["pod"], float(row["time"]))
             if row["node"] and row["pod"] in created:
                 bound.setdefault(row["pod"], float(row["time"]))
-    return [1000 * (bound[pod] - created[pod]) for pod in bound]
+    return [1000 * (bound[pod] - created[pod]) for pod in bound], ended
 
 
 def table(title, rows, key):
@@ -418,8 +433,10 @@ def report(out, meta):
         first = min(row["created"] for row in succeeded)
         last = max(row["finished"] for row in succeeded)
         makespan = f"{last - first:.0f} s"
-    waits = placement_waits(out)
+    waits, watch_ended = placement_waits(out)
     coverage = f"{len(waits)}/{meta['pods']} pods"
+    if watch_ended:
+        coverage += ", the watch ended early"
     placement = f"incomplete ({coverage})" if waits else f"missing ({coverage})"
     if waits and len(waits) == meta["pods"]:
         placement = (f"median {statistics.median(waits):.0f} ms, p95 {p95(waits):.0f} ms, "

@@ -54,7 +54,7 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 ## Output
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
-regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner), `decisions.jsonl` (the plugin's decision and binding lines for this run),
+regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
 `telemetry.csv` (kubelet CPU per node every 5 s), `meta.json`, `report.md`.
 
 The report gives:
@@ -76,7 +76,9 @@ download.
 
 Placement statistics require an unbound `ADDED` event followed by a bound event for every
 expected pod. Otherwise the report shows `missing` or `incomplete` with the coverage (n/N pods),
-without placement statistics. Plugin time is `missing` when no decisions were logged.
+without placement statistics. A watch that stops early is not resumed, since replayed events
+would be timed when they arrive; the report says so. Plugin time is `missing` when no decisions
+were logged.
 A run that fails partway is still reported: status `aborted` with the error, and whatever
 could not be collected shows as `missing`.
 
