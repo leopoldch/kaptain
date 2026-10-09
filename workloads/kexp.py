@@ -346,6 +346,7 @@ def delete_stale_namespaces():
         else:
             print(f"{name} kept: its run is alive (last heartbeat {silent_s:.0f} s ago)", file=sys.stderr)
     if stale:
+        print(f"deleting {' '.join(stale)}: dead runs' leftovers", file=sys.stderr)
         kubectl("delete", "namespace", *stale, "--ignore-not-found", "--wait=true", "--timeout=300s", timeout_s=330)
 
 
