@@ -133,14 +133,18 @@ def sample(nodes, telemetry):
     for node in nodes:
         try:
             raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary")
-            stats = json.loads(raw)["node"]
-        except RuntimeError:
-            continue  # a missed sample is left out, never written as zero
+            cpu = json.loads(raw)["node"]["cpu"]
+            usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
+            # Null until the kubelet has two readings to compute a rate from.
+            if isinstance(usage, bool) or not isinstance(usage, (int, float)):
+                raise ValueError(f"usageNanoCores is {usage!r}")
+        except (RuntimeError, ValueError, KeyError, TypeError) as error:
+            # Left out, never written as zero; the report counts the samples per node.
+            print(f"sample of {node} missed: {type(error).__name__}: {error}", file=sys.stderr)
+            continue
 
         # The kubelet refreshes every 10-15 s: its timestamp tells how old a value is.
-        cpu = stats["cpu"].get("usageNanoCores")
-        if cpu is not None:
-            telemetry.writerow([now(), node, cpu / 1e9, stats["cpu"]["time"]])
+        telemetry.writerow([now(), node, usage / 1e9, kubelet_time])
 
 
 def sample_until(stop, nodes, telemetry):
@@ -407,12 +411,12 @@ def utilization(out, node_cores):
     for node, total in sorted(node_cores.items()):
         percent = [100 * float(s["cpu_cores"]) / total for s in samples if s["node"] == node]
         if not percent:
-            lines.append(f"| {node} | missing | missing |")
+            lines.append(f"| {node} | 0 | missing | missing |")
             continue
         means.append(statistics.fmean(percent))
-        lines.append(f"| {node} | {means[-1]:.1f} | {max(percent):.1f} |")
+        lines.append(f"| {node} | {len(percent)} | {means[-1]:.1f} | {max(percent):.1f} |")
 
-    header = ["| Node | mean CPU % | peak CPU % |", "|---|---:|---:|"]
+    header = ["| Node | samples | mean CPU % | peak CPU % |", "|---|---:|---:|---:|"]
     imbalance = statistics.pstdev(means) if len(means) > 1 else None
     return header + lines, imbalance
 
