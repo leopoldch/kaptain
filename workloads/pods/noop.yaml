@@ -7,6 +7,10 @@ metadata:
     kaptain.io/workload: noop
 spec:
   schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
   restartPolicy: Never
   activeDeadlineSeconds: 3600
   automountServiceAccountToken: false

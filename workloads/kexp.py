@@ -24,6 +24,7 @@ KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --s
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
+EXPERIMENT_NODE = "kaptain.io/experiment-node"  # =true on the nodes experiments run on, master included
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
 
@@ -129,9 +130,11 @@ def cores(quantity):
 
 
 def worker_nodes():
-    nodes = json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
-    return {n["metadata"]["name"]: cores(n["status"]["allocatable"]["cpu"])
-            for n in nodes if not n["spec"].get("taints")}
+    """The nodes experiments run on and measure: chosen by label, which the pods select too."""
+    nodes = json.loads(kubectl("get", "nodes", "-l", f"{EXPERIMENT_NODE}=true", "-o", "json"))["items"]
+    if not nodes:
+        raise RuntimeError(f"no node labelled {EXPERIMENT_NODE}=true")
+    return {n["metadata"]["name"]: cores(n["status"]["allocatable"]["cpu"]) for n in nodes}
 
 
 def sample_node(node):

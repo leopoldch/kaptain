@@ -5,7 +5,7 @@ An experiment is a TOML file in `experiments/`. `kexp.py` copies the manifests i
 setting the name, namespace, CPU (and optionally memory) and arrival time, submits them on
 schedule and collects what happened. Python standard library and kubectl only.
 
-Images are upstream, pinned by multi-arch digest (the workers are arm64). Stress work is a
+Images are upstream, pinned by multi-arch digest (the nodes are amd64 and arm64). Stress work is a
 fixed operation count, calibrated on 2026-10-03 at 500m (bogo ops/s, Pi / Jetson): cpu 115 / 71,
 vm 36,700 / 21,200, hdd 410 / 280, so a stress pod runs about a minute on the Pi.
 
@@ -88,9 +88,15 @@ Each run gets its own namespace, labelled `kaptain.io/experiment`, with a deny-a
 NetworkPolicy. Pods run as non-root, without a ServiceAccount token, with every capability
 dropped and the default seccomp profile. Any labelled namespace left by a killed run is
 deleted, and waited for, before the next run starts (and before the workflow deploys a policy)
-and after every run. A run refuses to start unless the workers are idle: no pod outside
-`kube-system` on a worker, and no pod using `kaptain-scheduler`. Background load, if ever
+and after every run. A run refuses to start unless the experiment nodes are idle: no pod
+outside `kube-system` on one of them, and no pod using `kaptain-scheduler`. Background load, if ever
 wanted, has to be part of the experiment.
+
+Experiments run on the nodes labelled `kaptain.io/experiment-node=true`, and only there: the pods
+select that label and tolerate the control-plane taint, and `kexp.py` measures and checks the
+same nodes. Since 2026-10-09 these are `alex-master`, `leopold-raspberrypi` and
+`leopold-pve-worker-1` to `-3`; `alex-jetson` is left out. The master also runs the control plane,
+Kaptain's scheduler and decider, the runner and `kexp.py` itself: its measured load includes them.
 
 Seeded policies key on `kaptain.io/task-id = <experiment>/<pod>`, so the same seed places the
 same pods the same way in every run.
