@@ -16,7 +16,6 @@ import time
 import tomllib
 import traceback
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +32,7 @@ EXPERIMENT_NODE = "kaptain.io/experiment-node"  # =true on the nodes experiments
 WATCH_PROBE = "kexp-watch-probe"  # a pod no scheduler takes, streamed once the watch is open
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
+SAMPLE_TIMEOUT_S = 30  # a busy kubelet answers late, not never: the master's took over 5 s in bursts
 
 
 # Arrival processes: the arrival time, in seconds, of every pod.
@@ -149,7 +149,7 @@ def worker_nodes():
 
 def sample_node(node):
     try:
-        raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary", timeout_s=SAMPLE_EVERY_S)
+        raw = kubectl("get", "--raw", f"/api/v1/nodes/{node}/proxy/stats/summary", timeout_s=SAMPLE_TIMEOUT_S)
         cpu = json.loads(raw)["node"]["cpu"]
         usage, kubelet_time = cpu["usageNanoCores"], cpu["time"]
         # Null until the kubelet has two readings to compute a rate from.
@@ -164,19 +164,14 @@ def sample_node(node):
     return [now(), node, usage / 1e9, kubelet_time]
 
 
-def sample(nodes, telemetry):
-    # All nodes at once: one after the other, a round took longer than the sampling period,
-    # and a slow kubelet delayed every node behind it.
-    with ThreadPoolExecutor(max_workers=len(nodes)) as pool:
-        for row in pool.map(sample_node, nodes):
-            if row:
-                telemetry.writerow(row)
-
-
-def sample_until(stop, nodes, telemetry):
-    # Its own thread: a slow kubelet must not delay a pod's arrival.
+def sample_until(stop, node, telemetry, lock):
+    # One thread per node: a slow kubelet delays neither a pod's arrival nor the other nodes'
+    # samples. It is waited for, not skipped, since it is slow when its node is busiest.
     while not stop.wait(SAMPLE_EVERY_S):
-        sample(nodes, telemetry)
+        row = sample_node(node)
+        if row:
+            with lock:
+                telemetry.writerow(row)
 
 
 def all_finished(namespace, expected):
@@ -262,15 +257,18 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
     with (out / "telemetry.csv").open("w", newline="") as handle:
         telemetry = csv.writer(handle)
         telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
-        sampler = threading.Thread(target=sample_until, args=(stop, nodes, telemetry))
-        sampler.start()
+        lock = threading.Lock()
+        samplers = [threading.Thread(target=sample_until, args=(stop, node, telemetry, lock)) for node in nodes]
+        for sampler in samplers:
+            sampler.start()
         try:
             confirm_watch(namespace, pods[0], opened)
             submit(pods)
             return wait(namespace, len(pods), deadline)
         finally:
             stop.set()
-            sampler.join()  # before the file closes
+            for sampler in samplers:
+                sampler.join()  # before the file closes
             watch.terminate()
             watcher.join()
 

@@ -55,7 +55,7 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
-`telemetry.csv` (kubelet CPU per node every 5 s), `meta.json`, `report.md`.
+`telemetry.csv` (kubelet CPU per node every 5 s, later when a busy kubelet is slow to answer), `meta.json`, `report.md`.
 
 The report gives:
 
