@@ -84,6 +84,8 @@ would be timed when they arrive; the report says so. Plugin time is `missing` wh
 were logged.
 A run that fails partway is still reported: status `aborted` with the error, and whatever
 could not be collected shows as `missing`.
+A cancelled run (SIGTERM, Ctrl-C) stops at once: its files are collected, with status `aborted`
+and error `cancelled`, but no report.
 
 ## Isolation
 

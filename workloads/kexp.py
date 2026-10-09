@@ -418,6 +418,9 @@ def run(name, run_id, namespace, owner, out_root):
         # The run stays aborted, but what it measured is still collected and reported.
         traceback.print_exc()
         meta["error"] = f"{type(error).__name__}: {error}"
+    except (KeyboardInterrupt, SystemExit):
+        meta["error"] = "cancelled"  # SIGINT or SIGTERM: collected, not reported
+        raise
     finally:
         (out / "meta.json").write_text(json.dumps(meta, indent=2))
         if created:  # otherwise a namespace of that name, if any, is another run's
