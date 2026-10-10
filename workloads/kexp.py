@@ -33,6 +33,7 @@ WATCH_PROBE = "kexp-watch-probe"  # a pod no scheduler takes, streamed once the 
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
 SAMPLE_TIMEOUT_S = 30  # a busy kubelet answers late, not never: the master's took over 5 s in bursts
+COPY_LOGS_EVERY_S = 30
 
 
 # Arrival processes: the arrival time, in seconds, of every pod.
@@ -79,7 +80,14 @@ def kubectl(*args, stdin=None, timeout_s=60):
 
 
 def load(name):
-    return tomllib.loads((HERE / "experiments" / f"{name}.toml").read_text())
+    experiment = tomllib.loads((HERE / "experiments" / f"{name}.toml").read_text())
+    if "network" in experiment:
+        # Checked here, so that `kexp.py list` refuses it: a run would fail once started.
+        egress = experiment["network"].get("egress")
+        if not (isinstance(egress, dict) and isinstance(egress.get("cidr"), str)
+                and isinstance(egress.get("port"), int)):
+            raise ValueError(f"{name}: [network.egress] must be one table with a cidr string and a port integer")
+    return experiment
 
 
 def arrival_times(experiment, rng):
@@ -93,8 +101,10 @@ def read_manifest(kind):
     return json.loads(kubectl("create", "--dry-run=client", "-o", "json", "-f", "-", stdin=yaml))
 
 
-def manifests(name, namespace="default"):
+def manifests(name, namespace="default", scheduler=None):
     experiment = load(name)
+    # The kube-scheduler arm submits the same pods to the cluster's own default-scheduler.
+    scheduler = scheduler or experiment.get("scheduler")
     rng = random.Random(experiment["seed"])
     times = arrival_times(experiment, rng)
 
@@ -122,6 +132,13 @@ def manifests(name, namespace="default"):
             size["memory"] = f"{rng.randint(*memory)}Mi"
         for limit in pod["spec"]["containers"][0]["resources"].values():
             limit.update(size)  # requests = limits, as in DRS
+
+        if scheduler:
+            pod["spec"]["schedulerName"] = scheduler
+        if experiment.get("node"):
+            # Calibration only: profiles one workload on one node, as DRS's manifests pinned
+            # node1. It bypasses every scheduler, so no placement result may come from it.
+            pod["spec"]["nodeName"] = experiment["node"]
 
         pods.append(pod)
     return experiment, pods
@@ -234,6 +251,7 @@ def confirm_watch(namespace, template, opened):
     probe = copy.deepcopy(template)
     probe["metadata"] = {"name": WATCH_PROBE, "namespace": namespace}
     probe["spec"]["schedulerName"] = "kexp-none"  # no such scheduler: Pending, never run, deleted at once
+    probe["spec"].pop("nodeName", None)  # a calibration pod's: it would bind the probe, and run it
     kubectl("create", "-f", "-", stdin=json.dumps(probe))
     try:
         if not opened.wait(30):
@@ -242,10 +260,57 @@ def confirm_watch(namespace, template, opened):
         kubectl("-n", namespace, "delete", "pod", WATCH_PROBE, "--wait=false")
 
 
-def run_pods(out, namespace, pods, nodes, timeout_s):
+def copy_logs(stop, args, path, since):
+    """Copy logs every COPY_LOGS_EVERY_S while the run lasts, then once more when it ends.
+
+    Read only at the end, they would miss whatever a log rotation dropped; `logs -f` would
+    outlive the run inside the K3s container, where terminating docker exec does not reach."""
+    # One cursor per pod: its timestamps come from its own node's clock, so a node running behind
+    # would lose the lines it stamped before another node's last line.
+    cursors, seen = {}, set()
+    with path.open("w") as handle:
+        while True:
+            last = stop.wait(COPY_LOGS_EVERY_S)
+            try:
+                # --tail=-1: with a selector, kubectl keeps only the last 10 lines of each pod.
+                text = kubectl("logs", *args, "--timestamps", "--tail=-1",
+                               f"--since-time={min(cursors.values(), default=since)}")
+            except RuntimeError as error:
+                print(f"{path.name}: logs missed: {error}", file=sys.stderr)
+                text = ""
+            for line in text.splitlines():
+                prefix, _, rest = line.partition("] ") if line.startswith("[") else ("", "", line)
+                stamp, _, message = rest.partition(" ")
+                # sinceTime has 1 s resolution, and the earliest cursor serves every pod: lines
+                # already copied come back, the ahead pods' ones by more than a second.
+                if (prefix, stamp, message) in seen:
+                    continue
+                seen.add((prefix, stamp, message))
+                cursors[prefix] = max(cursors.get(prefix, since), stamp)
+                handle.write(f"{prefix}] {message}\n" if prefix else f"{message}\n")
+            handle.flush()
+            # The next request starts at the earliest cursor: only lines before it cannot return.
+            earliest = min(cursors.values(), default=since)[:19]
+            seen = {key for key in seen if key[1][:19] >= earliest}
+            if last:
+                return
+
+
+# The DRS monitors (one sample per node every 0.5 s) and the decider (drs_decision and
+# drs_transition lines): both feed the DRS metrics of every arm (reproduction-drs, E22, E32).
+COPIED_LOGS = {
+    "monitor.jsonl": ["-n", "kube-system", "-l", "app=drs-monitor", "--prefix", "--max-log-requests=10"],
+    "decider.jsonl": ["-n", "kube-system", "deploy/kaptain-decider"],
+}
+
+
+def run_pods(out, namespace, pods, nodes, timeout_s, hold_s=0):
     deadline = time.monotonic() + timeout_s
     stop = threading.Event()
     opened = threading.Event()
+    since = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    copiers = [threading.Thread(target=copy_logs, args=(stop, args, out / name, since))
+               for name, args in COPIED_LOGS.items()]
 
     # Terminating docker exec leaves kubectl running in the K3s container: it lasts until the server
     # ends the watch, timeoutSeconds after it opened. Harmless, its namespace is gone and streams nothing.
@@ -260,18 +325,25 @@ def run_pods(out, namespace, pods, nodes, timeout_s):
         telemetry.writerow(["time", "node", "cpu_cores", "kubelet_time"])
         lock = threading.Lock()
         samplers = [threading.Thread(target=sample_until, args=(stop, node, telemetry, lock)) for node in nodes]
-        for sampler in samplers:
-            sampler.start()
+        for thread in samplers + copiers:
+            thread.start()
         try:
-            confirm_watch(namespace, pods[0], opened)
+            started = time.monotonic()
+            if pods:  # an idle run has nothing to place
+                confirm_watch(namespace, pods[0], opened)
             submit(pods)
-            return wait(namespace, len(pods), deadline)
+            complete = wait(namespace, len(pods), deadline)
+            # Idle and overhead runs have no pod to wait for: they record for hold_s.
+            time.sleep(max(0.0, min(hold_s - (time.monotonic() - started), deadline - time.monotonic())))
+            return complete
         finally:
             stop.set()
             for sampler in samplers:
                 sampler.join()  # before the file closes
             watch.terminate()
             watcher.join()
+            for copier in copiers:
+                copier.join()  # after its last copy, the run's end included
 
 
 def scheduler_env():
@@ -303,7 +375,7 @@ def running_images():
     return images
 
 
-def create_namespace(namespace, owner):
+def create_namespace(namespace, owner, egress=()):
     namespace_object = {"apiVersion": "v1", "kind": "Namespace",
                         "metadata": {"name": namespace, "labels": {EXPERIMENT_LABEL: "true", OWNER_LABEL: owner},
                                      "annotations": {HEARTBEAT: str(int(time.time()))}}}
@@ -311,8 +383,16 @@ def create_namespace(namespace, owner):
     deny_all = {"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
                 "metadata": {"name": "deny-all", "namespace": namespace},
                 "spec": {"podSelector": {}, "policyTypes": ["Ingress", "Egress"]}}
-    kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List",
-                                                    "items": [namespace_object, deny_all]}))
+    items = [namespace_object, deny_all]
+    if egress:
+        # Except what the experiment declares, e.g. DRS's Transmission server: policies add up.
+        items.append({"apiVersion": "networking.k8s.io/v1", "kind": "NetworkPolicy",
+                      "metadata": {"name": "allow-declared-egress", "namespace": namespace},
+                      "spec": {"podSelector": {}, "policyTypes": ["Egress"],
+                               "egress": [{"to": [{"ipBlock": {"cidr": rule["cidr"]}}],
+                                           "ports": [{"protocol": "TCP", "port": rule["port"]}]}
+                                          for rule in egress]}})
+    kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List", "items": items}))
 
 
 def heartbeat_until(stop, owner):
@@ -387,11 +467,18 @@ def collect(out, namespace, started_at):
     (out / "decisions.jsonl").write_text("".join(ours))
 
 
-def run(name, run_id, namespace, owner, out_root):
-    experiment, pods = manifests(name, namespace)
+def run(name, run_id, namespace, owner, out_root, scheduler=None):
+    experiment, pods = manifests(name, namespace, scheduler)
+    scheduler = scheduler or experiment.get("scheduler") or "kaptain-scheduler"
     nodes = worker_nodes()
     env = scheduler_env()
     images = running_images()  # before any output: a run without clear provenance is not started
+    if experiment.get("node"):
+        scheduler, strategy = None, "pinned"  # by nodeName: no scheduler placed the pods
+    elif scheduler == "default-scheduler":
+        strategy = "kube-scheduler"  # never reaches Kaptain: its deployed policy is not the result
+    else:
+        strategy = env["KAPTAIN_STRATEGY"]
     check_no_other_run()
     check_idle(nodes)
 
@@ -402,8 +489,11 @@ def run(name, run_id, namespace, owner, out_root):
         "run_id": run_id,
         "source": experiment["source"],
         "pods": len(pods),
-        "strategy": env["KAPTAIN_STRATEGY"],
+        "scheduler": scheduler,
+        "strategy": strategy,
         "policy_version": env["POLICY_VERSION"],
+        "node": experiment.get("node"),
+        "hold_s": experiment.get("hold_s", 0),
         "images": images,
         "node_cores": nodes,
         "started_at": now(),
@@ -412,9 +502,9 @@ def run(name, run_id, namespace, owner, out_root):
 
     created = False
     try:
-        create_namespace(namespace, owner)
+        create_namespace(namespace, owner, [experiment["network"]["egress"]] if "network" in experiment else ())
         created = True
-        complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
+        complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"], experiment.get("hold_s", 0))
         meta["status"] = "complete" if complete else "timeout"
     except Exception as error:
         # The run stays aborted, but what it measured is still collected and reported.
@@ -590,12 +680,12 @@ def list_experiments():
         print(f"{path.stem:<16} {count:>3} pods  {experiment['description']}")
 
 
-def print_manifests(name):
-    _, pods = manifests(name)
+def print_manifests(name, scheduler=None):
+    _, pods = manifests(name, scheduler=scheduler)
     print(json.dumps({"apiVersion": "v1", "kind": "List", "items": pods}, indent=1))
 
 
-def run_and_report(name, out_root):
+def run_and_report(name, out_root, scheduler=None):
     run_id = os.environ.get("KEXP_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     namespace = f"kexp-{run_id}"
     owner = uuid.uuid4().hex
@@ -604,7 +694,7 @@ def run_and_report(name, out_root):
     heart = threading.Thread(target=heartbeat_until, args=(stop, owner), daemon=True)
     heart.start()
     try:
-        out, meta = run(name, run_id, namespace, owner, out_root)
+        out, meta = run(name, run_id, namespace, owner, out_root, scheduler)
         text = report(out, meta)
         (out / "report.md").write_text(text)
         print(text)
@@ -623,15 +713,16 @@ def main():
     parser.add_argument("command", choices=["list", "manifests", "run", "cleanup"])
     parser.add_argument("experiment", nargs="?")
     parser.add_argument("--out", type=Path, default=Path("results"))
+    parser.add_argument("--scheduler", help="override the experiment's schedulerName, e.g. default-scheduler")
     args = parser.parse_args()
 
     if args.command == "list":
         return list_experiments()
     if args.command == "manifests":
-        return print_manifests(args.experiment)
+        return print_manifests(args.experiment, args.scheduler)
     if args.command == "cleanup":
         return delete_stale_namespaces()
-    if not run_and_report(args.experiment, args.out):
+    if not run_and_report(args.experiment, args.out, args.scheduler):
         sys.exit(1)
 
 

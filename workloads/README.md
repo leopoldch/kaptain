@@ -43,6 +43,13 @@ cpu_millis = [200, 500]
 memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 ```
 
+Optional keys, for the DRS reproduction: `scheduler = "default-scheduler"` (or `--scheduler` on
+the command line) submits the same pods to Kubernetes' own scheduler; `node = "<node>"` pins every
+pod with `nodeName`, bypassing every scheduler, to profile a workload (calibration only, never a
+placement result: `meta.json` says strategy `pinned`); `hold_s` keeps recording that long after the start, for idle runs with
+`count = 0`; `[network.egress]` (`cidr`, `port`) lets the pods reach one address despite the
+deny-all policy.
+
 | Experiment | Taken from | Departures |
 |---|---|---|
 | `drs-even`, `drs-random`, `drs-cpu` | Jian et al. 2024 (DRS) §5.2: 1:1:1 or 4:1:1 mix, 20 s or N(20, 1) s arrivals, 200–500m CPU | stress-ng instead of DRS's amd64-only images; memory replaces network; 60 pods, not 300 |
@@ -55,7 +62,9 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
-`telemetry.csv` (kubelet CPU per node every 5 s, later when a busy kubelet is slow to answer), `meta.json`, `report.md`.
+`telemetry.csv` (kubelet CPU per node every 5 s, later when a busy kubelet is slow to answer),
+`monitor.jsonl` and `decider.jsonl` (the DRS monitors' and the decider's logs since the run
+started, copied every 30 s so that a log rotation loses nothing; empty without them), `meta.json`, `report.md`.
 
 The report gives:
 
@@ -103,7 +112,8 @@ using `kaptain-scheduler`. Background load, if ever wanted, has to be part of th
 Experiments run on the nodes labelled `kaptain.io/experiment-node=true`, and only there: the pods
 select that label and tolerate the control-plane taint, and `kexp.py` measures and checks the
 same nodes. Since 2026-10-09 these are `alex-master`, `leopold-raspberrypi` and
-`leopold-pve-worker-1` to `-3`; `alex-jetson` is left out. The master also runs the control plane,
+`leopold-pve-worker-1` to `-3`; `alex-jetson` is left out. The DRS reproduction removes the label
+from `alex-master`, for DRS's four workers. The master also runs the control plane,
 Kaptain's scheduler and decider, the runner and `kexp.py` itself: its measured load includes them.
 
 Seeded policies key on `kaptain.io/task-id = <experiment>/<pod>`, so the same seed places the
