@@ -15,6 +15,11 @@ def names(snapshot: dict) -> list[str]:
     return sorted(n["name"] for n in snapshot["nodes"])
 
 
+def one_hot(chosen: str, candidates: list[str]) -> dict[str, float]:
+    # Policies that pick one node: it alone scores, so the plugin binds it.
+    return {name: (1.0 if name == chosen else 0.0) for name in candidates}
+
+
 def pick(candidates: list[str], seed: int, key: str) -> str:
     # FNV-1a makes a seeded draw stable across runs.
     if not candidates:

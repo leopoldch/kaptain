@@ -6,7 +6,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.23@sha256:61d393e44e249f2e4b526b6c7ddcecce
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# --extra drs: torch and numpy for the drs strategy, installed for every policy (same image).
+RUN uv sync --frozen --no-dev --extra drs
 
 # Every module, not a list that goes stale: an omitted one only shows up at startup, in a
 # CrashLoopBackOff, which is how metrics.py was first missed.

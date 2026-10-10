@@ -1,0 +1,20 @@
+# One-off strategic merge patch for the decider already running on the cluster, so that it
+# matches k8s/decider.yaml without re-applying it (which would reset the deployed image):
+#   kubectl -n kube-system patch deployment kaptain-decider --patch-file k8s/decider-drs-patch.yaml
+spec:
+  template:
+    spec:
+      containers:
+        - name: decider
+          env:
+            - name: DRS_CONFIG
+              value: /etc/kaptain-drs/config.json
+          volumeMounts:
+            - name: drs-config
+              mountPath: /etc/kaptain-drs
+              readOnly: true
+      volumes:
+        - name: drs-config
+          configMap:
+            name: kaptain-drs-config
+            optional: true

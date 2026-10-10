@@ -1,4 +1,4 @@
-from helpers import names, pick
+from helpers import names, one_hot, pick
 
 from .base import SchedulingStrategy
 
@@ -13,4 +13,4 @@ class DummyRandom(SchedulingStrategy):
         if not candidates:
             raise ValueError("no candidate nodes")
         chosen = pick(candidates, snapshot["seed"], snapshot["pod"]["task_id"])
-        return {name: (1.0 if name == chosen else 0.0) for name in candidates}
+        return one_hot(chosen, candidates)

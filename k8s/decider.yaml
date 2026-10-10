@@ -3,6 +3,8 @@
 # No ServiceAccount and no RBAC: this process never reads the Kubernetes API. The plugin
 # builds the snapshot from the scheduler cache and sends it; everything the policy needs is
 # in the request body. That is the whole difference with the extender this replaced.
+# The one exception is drs, which queries the DRS monitors (k8s/drs-monitor.yaml) over the
+# VPN, as DRS's decision maker did: still no Kubernetes API, but not a pure function.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,8 +42,15 @@ spec:
           env:
             # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: the plugin refuses to
             # start, and refuses the decision, if the two disagree.
-            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
+            - name: STRATEGY            # drs | dummy-random | largest-cpu-capacity | least-allocated | least-used | round-robin
               value: "dummy-random"
+            # Read by the drs strategy only: its monitors, normalisation and hyper-parameters.
+            - name: DRS_CONFIG
+              value: /etc/kaptain-drs/config.json
+          volumeMounts:
+            - name: drs-config
+              mountPath: /etc/kaptain-drs
+              readOnly: true
           ports:
             - containerPort: 8888
           readinessProbe:
@@ -49,6 +58,12 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities: { drop: [ALL] }
+      volumes:
+        # Optional: every other policy starts without it.
+        - name: drs-config
+          configMap:
+            name: kaptain-drs-config
+            optional: true
 ---
 apiVersion: v1
 kind: Service
