@@ -1,0 +1,71 @@
+# The DRS monitor (monitor/drs_monitor.py) on every worker. It runs in every arm of the DRS
+# reproduction, not only under the drs policy: the same load on the nodes, and the same six
+# metrics recorded for every policy (reproduction-drs/ECARTS-DRS.md, E22).
+#
+# The script ships as a ConfigMap, so no image has to be built for the arm64 and amd64
+# workers. kubectl runs inside the K3s container, so host files go through stdin:
+#   k -n kube-system create configmap drs-monitor-script --from-file=drs_monitor.py=/dev/stdin \
+#     --dry-run=client -o yaml < monitor/drs_monitor.py | k apply -f -
+#   k apply -f - < k8s/drs-monitor.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: drs-monitor
+  namespace: kube-system
+  labels: { app: drs-monitor }
+spec:
+  selector:
+    matchLabels: { app: drs-monitor }
+  template:
+    metadata:
+      labels: { app: drs-monitor }
+    spec:
+      # The experiment nodes, those kexp.py measures and its pods select: for the DRS bench, the
+      # 3 Proxmox VMs and the Pi. Neither the master nor alex-jetson is a candidate (ECARTS E01, E40).
+      nodeSelector: { kaptain.io/experiment-node: "true" }
+      # The node's own network namespace: /proc/net/dev must list the node's interfaces.
+      # /proc/stat, /proc/meminfo and /proc/diskstats are not namespaced.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: monitor
+          # Multi-arch (arm64 included), pinned by index digest; 3.12-alpine on 2026-10-07.
+          image: python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+          command: [python3, -u, /opt/drs/drs_monitor.py]
+          env:
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            # Listen on the node's VPN address only, not on its home Wi-Fi.
+            - name: DRS_BIND
+              valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+            - { name: DRS_PORT, value: "9101" }
+            - { name: DRS_PERIOD_S, value: "0.5" }
+            - { name: DRS_AVGTIME, value: "2" }
+            - { name: DRS_QUEUE, value: "10" }
+            - { name: DRS_IFACES, value: "wg-vps,wlan0,wlP1p1s0" }
+            # First device present: the SD card on the Pi, the virtual disk on the VMs.
+            - { name: DRS_DISK, value: "mmcblk0,sda" }
+          ports:
+            - { containerPort: 9101, hostPort: 9101, name: state }
+          readinessProbe:
+            httpGet: { path: /state, port: 9101 }
+            periodSeconds: 5
+          # A request, no limit: DRS's monitor was a plain host process, and its cost is one of
+          # the measured results (E35). The request is the same in every arm.
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts:
+            - { name: script, mountPath: /opt/drs, readOnly: true }
+      volumes:
+        - name: script
+          configMap: { name: drs-monitor-script }
