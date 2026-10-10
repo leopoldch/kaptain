@@ -1,0 +1,48 @@
+# Network-intensive, DRS's Transmission (Jian et al. 2024; jolyonjian/apps:net-1.0,
+# network.py): the authors' client, unchanged but for the server address. Their server is not
+# published; ours (reproduction-drs/serveur-net) runs on the master, outside Kubernetes.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: net
+  labels:
+    kaptain.io/workload: net
+spec:
+  schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: work
+      image: python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+      env:
+        - {name: DRS_NET_SERVER, value: "10.50.0.1:5301"}
+      command:
+        - python3
+        - -c
+        - |
+          import os, socket
+          host, port = os.environ["DRS_NET_SERVER"].rsplit(":", 1)
+          tcp_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+          tcp_client_socket.connect((host, int(port)))
+          for i in range(2000):
+              data = tcp_client_socket.recv(1024)
+              if data:
+                  print(i, end='\r')
+                  tcp_client_socket.send(data)
+          tcp_client_socket.close()
+      resources:
+        requests: {cpu: 500m}
+        limits: {cpu: 500m}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}

@@ -1,0 +1,24 @@
+name = "drsA-random"
+description = "DRS reproduction, variant A (authors' apps): video/net/disk at 1:1:1, inter-arrival N(20 s, 1 s)"
+source = "Jian et al. 2024 (DRS), section 5.2, Random workload; reproduction-drs/ECARTS-DRS.md"
+seed = 7
+count = 300
+timeout_s = 9000
+
+[arrival]
+process = "normal"
+mean_s = 20
+stddev_s = 1
+
+[mix]
+video = 1
+net = 1
+drsdisk = 1
+
+[resources]
+cpu_millis = [200, 500]
+
+# DRS's Transmission talks to a server; ours runs on the master, outside Kubernetes (E24, E29).
+[network.egress]
+cidr = "10.50.0.1/32"
+port = 5301

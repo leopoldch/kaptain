@@ -1,0 +1,16 @@
+name = "calib-idle-avec-moniteur"
+description = "Idle workers for 10 minutes, DRS monitor DaemonSet present (DRS Fig. 5, None vs Monitor)"
+source = "Jian et al. 2024 (DRS), section 5.2 (3.27 % CPU overhead); reproduction-drs/ECARTS-DRS.md (E35)"
+seed = 7
+count = 0
+timeout_s = 900
+hold_s = 600
+
+[arrival]
+process = "fixed"
+interval_s = 20
+
+[mix]
+
+[resources]
+cpu_millis = [500, 500]

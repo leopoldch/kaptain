@@ -1,0 +1,18 @@
+name = "drsB-even"
+description = "DRS reproduction, variant B (stress-ng, PR #28): cpu/memory/disk at 1:1:1, one pod every 20 s"
+source = "Jian et al. 2024 (DRS), section 5.2, Even workload; stress-ng as in PR #28; reproduction-drs/ECARTS-DRS.md (E28)"
+seed = 7
+count = 300
+timeout_s = 9000
+
+[arrival]
+process = "fixed"
+interval_s = 20
+
+[mix]
+cpu = 1
+memory = 1
+disk = 1
+
+[resources]
+cpu_millis = [200, 500]

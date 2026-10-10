@@ -1,0 +1,22 @@
+name = "drsA-pilote"
+description = "Pilot of variant A: 30 pods at 1:1:1, one every 20 s; checks images, egress, monitors and the DRS loop"
+source = "pipeline check only (reproduction-drs/PLAN.md, phase 4)"
+seed = 11
+count = 30
+timeout_s = 2400
+
+[arrival]
+process = "fixed"
+interval_s = 20
+
+[mix]
+video = 1
+net = 1
+drsdisk = 1
+
+[resources]
+cpu_millis = [200, 500]
+
+[network.egress]
+cidr = "10.50.0.1/32"
+port = 5301

@@ -1,0 +1,44 @@
+# IO-intensive, DRS's Data Write (Jian et al. 2024; jolyonjian/apps:io-1.0, run.sh): the same
+# two dd commands with 8 KiB blocks, scaled from 1,000,000 blocks (8.2 GB written, then
+# copied) to DD_COUNT blocks: the Pi's SD card cannot take 16 GB per pod, neither in speed nor
+# in wear, and the VMs have 36 GiB free (ECARTS E25). The emptyDir must hold 2 x DD_COUNT x 8 KiB.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: drsdisk
+  labels:
+    kaptain.io/workload: drsdisk
+spec:
+  schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: work
+      image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      env:
+        - {name: DD_COUNT, value: "16384"}   # 128 MiB; set by the calibration (PLAN.md, phase 4)
+      command:
+        - sh
+        - -c
+        - dd if=/dev/zero of=/work/test bs=8k count=$DD_COUNT && dd if=/work/test of=/work/copy bs=8k && rm -f /work/test /work/copy
+      resources:
+        requests: {cpu: 500m}
+        limits: {cpu: 500m}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      volumeMounts:
+        - {name: work, mountPath: /work}
+  volumes:
+    - name: work
+      emptyDir: {sizeLimit: 1Gi}

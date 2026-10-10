@@ -1,0 +1,23 @@
+name = "drsA-cpu"
+description = "DRS reproduction, variant A (authors' apps): video/net/disk at 4:1:1, one pod every 20 s"
+source = "Jian et al. 2024 (DRS), section 5.2, CPU workload; reproduction-drs/ECARTS-DRS.md"
+seed = 7
+count = 300
+timeout_s = 9000
+
+[arrival]
+process = "fixed"
+interval_s = 20
+
+[mix]
+video = 4
+net = 1
+drsdisk = 1
+
+[resources]
+cpu_millis = [200, 500]
+
+# DRS's Transmission talks to a server; ours runs on the master, outside Kubernetes (E24, E29).
+[network.egress]
+cidr = "10.50.0.1/32"
+port = 5301

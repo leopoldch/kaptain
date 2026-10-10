@@ -1,0 +1,21 @@
+name = "calib-disk-pi"
+description = "Calibration: one disk pod at a time on leopold-raspberrypi, 500m, three times (DRS Fig. 5-7)"
+source = "Jian et al. 2024 (DRS), section 5.2, Figures 5-7; reproduction-drs/PLAN.md, phase 4"
+seed = 7
+count = 3
+# Pinned with nodeName: profiles the workload, never a placement result.
+node = "leopold-raspberrypi"
+# Wider than one pod's run (measured by the phase-4 pilot), so each pod runs alone.
+timeout_s = 3600
+hold_s = 0
+
+[arrival]
+process = "fixed"
+interval_s = 180
+
+[mix]
+disk = 1
+
+[resources]
+cpu_millis = [500, 500]
+

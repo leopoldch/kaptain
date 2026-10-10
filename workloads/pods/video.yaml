@@ -1,0 +1,44 @@
+# CPU-intensive, DRS's Video Scale (Jian et al. 2024; jolyonjian/apps:cpu-1.0, run.sh): the
+# authors' input.mp4 and their command, with a multi-arch FFmpeg 8 (the Pi is arm64, the VMs
+# amd64) instead of 3.3 for amd64 only. input.mp4 is copied to /opt/drs on each of the four
+# workers beforehand (reproduction-drs/PLAN.md, phase 3).
+apiVersion: v1
+kind: Pod
+metadata:
+  name: video
+  labels:
+    kaptain.io/workload: video
+spec:
+  schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: work
+      # jrottenberg/ffmpeg:8-ubuntu, the authors' base image line, multi-arch index digest.
+      image: jrottenberg/ffmpeg@sha256:73b5e69d428ecd4b97c2a8085755ecbe2c56f244a38917ed710bb98597e65d8f
+      command: [ffmpeg, -y, -i, /drs/input.mp4, -threads, "1", -vf, "scale=160:90", /work/output.mp4]
+      # CPU only, as in the authors' manifests: no memory request or limit.
+      resources:
+        requests: {cpu: 500m}
+        limits: {cpu: 500m}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      volumeMounts:
+        - {name: input, mountPath: /drs, readOnly: true}
+        - {name: work, mountPath: /work}
+  volumes:
+    - name: input
+      hostPath: {path: /opt/drs, type: Directory}
+    - name: work
+      emptyDir: {sizeLimit: 256Mi}
