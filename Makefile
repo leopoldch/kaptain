@@ -102,7 +102,7 @@ check: lint-manifests
 	# This is the cheapest thing that catches it without a cluster and without a suite.
 	cd bridge && uv run --frozen python -c "import app; \
 	  from strategies import get_strategy; \
-	  [get_strategy(n) for n in ('dummy-random','largest-cpu-capacity','least-allocated','least-used')]"
+	  [get_strategy(n) for n in ('dummy-random','largest-cpu-capacity','least-allocated','least-used','drs-greedy')]"
 
 fmt-plugin:
 	cd plugin && gofmt -w .

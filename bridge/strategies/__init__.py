@@ -1,12 +1,13 @@
 from .base import SchedulingStrategy
 from .drs import DRS
+from .drs_greedy import DRSGreedy
 from .dummy_random import DummyRandom
 from .largest_cpu_capacity import LargestCPUCapacity
 from .least_allocated import LeastAllocated
 from .least_used import LeastUsed
 from .round_robin import RoundRobin
 
-_REGISTRY = {s.name: s for s in (DRS, DummyRandom, LargestCPUCapacity, LeastAllocated, LeastUsed, RoundRobin)}
+_REGISTRY = {s.name: s for s in (DRS, DRSGreedy, DummyRandom, LargestCPUCapacity, LeastAllocated, LeastUsed, RoundRobin)}
 
 
 def get_strategy(name: str) -> SchedulingStrategy:

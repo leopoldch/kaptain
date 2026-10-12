@@ -42,9 +42,9 @@ spec:
           env:
             # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: the plugin refuses to
             # start, and refuses the decision, if the two disagree.
-            - name: STRATEGY            # drs | dummy-random | largest-cpu-capacity | least-allocated | least-used | round-robin
+            - name: STRATEGY            # drs | drs-greedy | dummy-random | largest-cpu-capacity | least-allocated | least-used | round-robin
               value: "dummy-random"
-            # Read by the drs strategy only: its monitors, normalisation and hyper-parameters.
+            # Read by the drs, drs-greedy and round-robin strategies: its monitors, normalisation and hyper-parameters.
             - name: DRS_CONFIG
               value: /etc/kaptain-drs/config.json
           volumeMounts:
