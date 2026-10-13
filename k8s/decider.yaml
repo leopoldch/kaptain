@@ -20,9 +20,15 @@ spec:
       # whole node's usage, so a scheduler or a decider sitting on a worker inflates that
       # worker's measured load, and least-used would then avoid a node for no reason but
       # Kaptain being there. The control plane is tainted in kind and excluded from the
-      # candidates, which is exactly where this belongs.
-      nodeSelector:
-        node-role.kubernetes.io/control-plane: ""
+      # candidates, which is exactly where this belongs. On the K3s cluster it is an
+      # experiment node too, and its measured load includes Kaptain (workloads/README.md).
+      # The label's value differs, "" in kind and "true" in K3s: only its presence counts.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - { key: node-role.kubernetes.io/control-plane, operator: Exists }
       tolerations:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
