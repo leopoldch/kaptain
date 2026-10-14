@@ -55,7 +55,10 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
-`telemetry.csv` (kubelet CPU per node every 5 s, later when a busy kubelet is slow to answer), `meta.json`, `report.md`.
+`telemetry.csv` (kubelet CPU and memory working set per node every 5 s, later when a busy kubelet is slow to answer;
+each with the kubelet's own timestamp), `network.csv` (from the same answers: cumulative bytes received and sent, for every
+interface, since the one carrying the cluster's traffic differs between nodes), `meta.json` (with each node's allocatable
+CPU and memory), `report.md`.
 
 The report gives:
 
@@ -67,7 +70,7 @@ The report gives:
 | Completion time per workload and per node (mean, p95, max) | pod created (API server) → container finished (kubelet) |
 | Placement wait (median, p95, max) | pod first seen → first seen with a node, in the API watch stream, both timed by the runner on the master, ms |
 | Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
-| CPU utilization per node (samples, mean, peak) | kubelet usage / allocatable, refreshed by the kubelet every 10–15 s |
+| CPU and memory utilization per node (samples, mean, peak) | kubelet CPU usage and memory working set / allocatable, refreshed by the kubelet every 10–15 s; memory `missing` for runs before 2026-10-09 |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |
 
 API server and kubelet timestamps have 1 s resolution and come from different machines'
@@ -86,6 +89,41 @@ A run that fails partway is still reported: status `aborted` with the error, and
 could not be collected shows as `missing`.
 A cancelled run (SIGTERM, Ctrl-C) stops at once: its files are collected, with status `aborted`
 and error `cancelled`, but no report.
+
+## Plots
+
+`kplot.py` draws one or more runs, locally: it needs matplotlib, which `uv` installs from the
+script header, while `kexp.py` stays standard library only. It takes run folders, or any folder
+containing them, such as downloaded artifacts:
+
+```bash
+gh run download <run-id> -D runs/       # once per workflow run
+uv run kplot.py runs/ --out results/plots
+```
+
+Runs are sorted by experiment, then strategy, and labelled by strategy, plus the run id when a
+strategy appears more than once. The four strategies of the workflow keep their colour across
+figures and invocations; any other takes the next free one, so its colour depends on the runs
+plotted with it.
+
+| Figure | Shows |
+|---|---|
+| `makespan.png` | one bar per run, as in the report: only when every pod succeeded |
+| `completion.png` | every succeeded pod's completion time, one panel per workload, coloured by the node it ran on |
+| `pods-per-node.png` | how many pods each node ran |
+| `placement-wait.png` | every pod's placement wait per run, with the box of its quartiles and the coverage (n/N pods) |
+| `plugin-time.png` | the plugin's time per decision (snapshot + decider call), with the fallbacks counted |
+| `imbalance.png` | std. dev. of CPU % across nodes at each instant, every 5 s, each node holding its last reading |
+| `cpu.png`, `memory.png` | one panel per run, CPU or memory working set % of allocatable per node; dashed where the last pod finished. No `memory.png` when no run has memory samples |
+
+Distributions switch to a log scale when the values span more than 20×. Time runs from the first
+pod created, and CPU is drawn at the kubelet's timestamp, each reading once: sampled every 5 s, a
+kubelet that refreshes every 10–15 s answers the same reading twice.
+
+The imbalance is DRS's Imbalance_t restricted to CPU, at each instant, where the report gives the
+std. dev. of the run means: two nodes busy in turn balance out in the latter, not in the former.
+`--imbalance-without alex-master` (repeatable, checked against the runs' nodes) leaves a node out of it, such as the master,
+whose control plane keeps it busy whatever the policy.
 
 ## Isolation
 
