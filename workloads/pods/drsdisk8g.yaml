@@ -1,0 +1,50 @@
+# IO-intensive, DRS's Data Write at its full size (Jian et al. 2024; jolyonjian/apps:io-1.0, run.sh):
+# the same two dd commands with 8 KiB blocks and the authors' 1,000,000 blocks, 8.2 GB written,
+# then copied, 16.4 GB on disk at the peak. For the 3-VM bench only (2026-10-15, VMs at 8, 1 and
+# 1 vCPU): the Pi's SD card cannot take it. drsdisk.yaml (256 MiB) stays for the earlier runs.
+# The workload label stays drsdisk, so the calibration and DRS's pod vectors treat it as the
+# same application.
+# ephemeral-storage: each VM has 36 GiB free, so two of these pods would fill a disk, or push it
+# past the kubelet's image GC threshold (85 %) and lose the preloaded images. 19Gi requested
+# on a 37 GiB allocatable disk lets Kubernetes' Filter admit one at a time per node, whatever
+# the scheduler.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: drsdisk8g
+  labels:
+    kaptain.io/workload: drsdisk
+spec:
+  schedulerName: kaptain-scheduler
+  # Experiment nodes only, the master among them despite its control-plane taint.
+  nodeSelector: {kaptain.io/experiment-node: "true"}
+  tolerations:
+    - {key: node-role.kubernetes.io/control-plane, operator: Exists, effect: NoSchedule}
+  restartPolicy: Never
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65534
+    runAsGroup: 65534
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: work
+      image: busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+      env:
+        - {name: DD_COUNT, value: "1000000"}   # the authors' count: 8.2 GB
+      command:
+        - sh
+        - -c
+        - dd if=/dev/zero of=/work/test bs=8k count=$DD_COUNT conv=fsync && dd if=/work/test of=/work/copy bs=8k conv=fsync && rm -f /work/test /work/copy
+      resources:
+        requests: {cpu: 500m, ephemeral-storage: 19Gi}
+        limits: {cpu: 500m, ephemeral-storage: 19Gi}
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      volumeMounts:
+        - {name: work, mountPath: /work}
+  volumes:
+    - name: work
+      emptyDir: {sizeLimit: 19Gi}

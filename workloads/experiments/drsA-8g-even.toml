@@ -1,0 +1,25 @@
+name = "drsA-8g-even"
+description = "DRS on unequal VMs (8, 1 and 1 vCPU), variant A with the full 8.2 GB disk task: video/net/drsdisk8g at 1:1:1, one pod every 20 s"
+source = "Jian et al. 2024 (DRS), section 5.2, Even workload; reproduction-drs/SYNTHESE-DRS.md, essai 12"
+seed = 7
+count = 300
+# drsA-even allows 9000 s. Disk pods now take minutes and run one at a time per node, so they
+# can queue behind each other.
+timeout_s = 14400
+
+[arrival]
+process = "fixed"
+interval_s = 20
+
+[mix]
+video = 1
+net = 1
+drsdisk8g = 1
+
+[resources]
+cpu_millis = [200, 500]
+
+# DRS's Transmission talks to a server; ours runs on the master, outside Kubernetes (E24, E29).
+[network.egress]
+cidr = "10.50.0.1/32"
+port = 5301
