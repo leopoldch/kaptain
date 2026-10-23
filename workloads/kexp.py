@@ -23,6 +23,7 @@ HERE = Path(__file__).resolve().parent
 KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --server=https://10.50.0.1:6443")
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
+PHASE = "kaptain.io/phase"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
 OWNER_LABEL = "kaptain.io/run-owner"  # random per process: a run deletes only the namespace it created
 HEARTBEAT = "kaptain.io/heartbeat"  # unix time, renewed while the run lives
@@ -95,6 +96,7 @@ def read_manifest(kind):
 
 def manifests(name, namespace="default"):
     experiment = load(name)
+    experiment["seed"] = int(os.environ.get("KEXP_SEED") or experiment["seed"])  # a campaign repeats with other seeds
     rng = random.Random(experiment["seed"])
     times = arrival_times(experiment, rng)
 
@@ -111,6 +113,8 @@ def manifests(name, namespace="default"):
         pod = copy.deepcopy(templates[kind])
         pod["metadata"]["name"] = f"{kind}-{index:03d}"
         pod["metadata"]["namespace"] = namespace
+        if os.environ.get("KEXP_PHASE"):  # train or eval: Kaptain is frozen in eval (bridge/strategies/kaptain.py)
+            pod["metadata"]["labels"][PHASE] = os.environ["KEXP_PHASE"]
         pod["metadata"]["annotations"] = {
             ARRIVAL: f"{arrival:.3f}",
             # Seeded policies key on this; without it they use namespace/name, which changes every run.
@@ -438,6 +442,8 @@ def run(name, run_id, namespace, owner, out_root):
         "experiment": name,
         "run_id": run_id,
         "source": experiment["source"],
+        "seed": experiment["seed"],
+        "phase": os.environ.get("KEXP_PHASE") or "online",
         "pods": len(pods),
         "strategy": env["KAPTAIN_STRATEGY"],
         "policy_version": env["POLICY_VERSION"],
@@ -662,7 +668,8 @@ def run_and_report(name, out_root):
         print(text)
 
         if "GITHUB_STEP_SUMMARY" in os.environ:
-            Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(text)
+            with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:  # a campaign adds one report per run
+                summary.write(text + "\n")
     finally:
         stop.set()  # not joined: a beat in flight must not delay the deletion of a cancelled job
         # Last, after the report and whatever failed before: a leftover namespace would load the next run.

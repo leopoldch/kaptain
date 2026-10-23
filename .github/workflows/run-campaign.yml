@@ -1,0 +1,128 @@
+name: Run campaign
+
+# Every experiment, policy and seed listed. Each policy is deployed afresh for each experiment:
+# Kaptain starts from scratch. The policies that learn first train on other seeds, then every
+# policy runs the evaluated seeds, Kaptain frozen. One report per run in the summary, then a
+# table per experiment of the evaluated runs (ktable.py), all the raw files in one artifact.
+
+on:
+  workflow_dispatch:
+    inputs:
+      experiments:
+        description: Experiments from workloads/experiments/, separated by spaces
+        required: true
+        default: drs-even
+        type: string
+      strategies:
+        description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm] sets its weights and Phi
+        required: true
+        default: kaptain kaptain-b0.5 kaptain-b2 kaptain-l1 kaptain-l4 kaptain-l1-llm kaptain-l4-llm shortest-estimate least-allocated
+        type: string
+      seeds:
+        description: Seeds evaluated, separated by spaces (each one gives other pods and arrival times)
+        required: true
+        default: 7 8 9 10 11
+        type: string
+      train_runs:
+        description: Training runs before them, for the policies that learn (seeds 1000, 1001, ...)
+        required: true
+        default: "5"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kaptain-cluster
+  cancel-in-progress: false
+
+jobs:
+  run:
+    if: >-
+      github.repository == 'leopoldch/kaptain' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: [self-hosted, linux, x64, kaptain-cluster]
+    timeout-minutes: 4320
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run campaign
+        shell: bash
+        env:
+          EXPERIMENTS: ${{ inputs.experiments }}
+          STRATEGIES: ${{ inputs.strategies }}
+          SEEDS: ${{ inputs.seeds }}
+          TRAIN_RUNS: ${{ inputs.train_runs }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies use it
+          RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -uo pipefail
+          read -ra experiments <<< "$EXPERIMENTS"
+          read -ra strategies <<< "$STRATEGIES"
+          read -ra seeds <<< "$SEEDS"
+          for experiment in "${experiments[@]}"; do
+            [[ -f workloads/experiments/$experiment.toml && $experiment =~ ^[a-z0-9-]+$ ]] || { echo "unknown experiment: $experiment"; exit 1; }
+          done
+          for strategy in "${strategies[@]}"; do
+            [[ $strategy =~ ^[a-z0-9][a-z0-9.-]*$ ]] || { echo "bad strategy: $strategy"; exit 1; }
+          done
+          for seed in "${seeds[@]}"; do
+            [[ $seed =~ ^[0-9]+$ ]] || { echo "bad seed: $seed"; exit 1; }
+          done
+          [[ $TRAIN_RUNS =~ ^[0-9]+$ ]] || { echo "bad train_runs: $TRAIN_RUNS"; exit 1; }
+
+          failed=0
+          runs=()
+          for experiment in "${experiments[@]}"; do
+            for strategy in "${strategies[@]}"; do
+              # Before the deployment: its own check refuses while pods of a killed run remain.
+              python3 workloads/kexp.py cleanup
+              if ! bash deploy-policy.sh "$strategy"; then
+                runs+=("| $experiment | $strategy | all | all | deploy failed |")
+                failed=1
+                continue
+              fi
+              # Policies that learn train first, on other seeds; then every policy is evaluated,
+              # Kaptain frozen. The baselines have nothing to learn.
+              plan=()
+              if [[ $strategy == kaptain* || $strategy == shortest-estimate ]]; then
+                for ((i = 0; i < TRAIN_RUNS; i++)); do plan+=("train $((1000 + i))"); done
+              fi
+              for seed in "${seeds[@]}"; do plan+=("eval $seed"); done
+              for step in "${plan[@]}"; do
+                read -r phase seed <<< "$step"
+                python3 workloads/kexp.py cleanup
+                # A namespace name takes no dot: kaptain-b0.5 becomes kaptain-b0-5 there.
+                if KEXP_PHASE=$phase KEXP_SEED=$seed KEXP_RUN_ID=$RUN-${strategy//./-}-$phase-s$seed \
+                    python3 workloads/kexp.py run "$experiment" --out results; then
+                  runs+=("| $experiment | $strategy | $phase | $seed | complete |")
+                else
+                  runs+=("| $experiment | $strategy | $phase | $seed | failed |")
+                  failed=1
+                fi
+              done
+            done
+          done
+
+          {
+            echo "# Campaign"
+            echo
+            echo '| Experiment | Policy | Phase | Seed | Run |'
+            echo '| --- | --- | --- | --- | --- |'
+            printf '%s\n' "${runs[@]}"
+            echo
+            [[ -d results ]] && (cd workloads && python3 ktable.py ../results --reference least-allocated)
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: campaign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: results/
+          if-no-files-found: ignore
+          retention-days: 90

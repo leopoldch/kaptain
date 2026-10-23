@@ -18,6 +18,10 @@ python3 kexp.py cleanup                   # delete namespaces left by killed run
 
 On GitHub: **Actions → Run experiment → Run workflow**, choose the experiment and optionally a
 policy to deploy first. The report lands in the run summary, the raw files in the artifact.
+**Actions → Run campaign** does the same for several policies and seeds in one go, and
+`KEXP_SEED=8 python3 kexp.py run drs-even` replaces the file's seed by hand, and
+`python3 ktable.py runs/` sums up downloaded runs: per experiment and policy, the mean over
+seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.
 
 ## Experiment file
 

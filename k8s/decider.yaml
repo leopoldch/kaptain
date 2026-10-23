@@ -1,8 +1,8 @@
 # The out-of-process decider the plugin calls when KAPTAIN_DECIDER_URL is set.
 #
-# No ServiceAccount and no RBAC: this process never reads the Kubernetes API. The plugin
-# builds the snapshot from the scheduler cache and sends it; everything the policy needs is
-# in the request body. That is the whole difference with the extender this replaced.
+# The plugin builds the snapshot from the scheduler cache and sends it. Only the kaptain
+# strategies also read the API: they list the experiment pods to learn runtimes and count the
+# unfinished ones (decider-rbac.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,7 +33,8 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
-      automountServiceAccountToken: false
+      serviceAccountName: kaptain-decider
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
@@ -46,7 +47,7 @@ spec:
           env:
             # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: the plugin refuses to
             # start, and refuses the decision, if the two disagree.
-            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used
+            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used | shortest-estimate | kaptain[-b<beta>][-l<lambda>][-llm]
               value: "dummy-random"
           ports:
             - containerPort: 8888

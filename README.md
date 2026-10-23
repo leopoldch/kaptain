@@ -94,8 +94,9 @@ server proxy. The scheduler caches these samples in the background; a scheduling
 never calls a kubelet. The prototype's `nodes/proxy` permission is broad and can expose other
 kubelet proxy endpoints.
 
-Decider environment: `STRATEGY`, and nothing else — it reads no cluster state, because
-everything the policy needs arrives in the request body. It reports on every `/decide` the
+Decider environment: `STRATEGY`, and nothing else. Everything the baselines need arrives in
+the request body; only the Kaptain strategies also list the experiment pods, to learn
+runtimes and count the unfinished ones (`k8s/decider-rbac.yaml`). It reports on every `/decide` the
 name of what actually ran. The plugin **refuses to start** if that name disagrees with
 `KAPTAIN_STRATEGY`, and refuses the decision — explicit fallback, `strategy_mismatch` — if
 they come to disagree afterwards, which is what a decider redeployed under a running
@@ -107,8 +108,18 @@ unparseable value fails at startup rather than becoming a default.
 ## Add a policy
 
 Strategies live in `bridge/strategies/`, one class per file extending the
-`SchedulingStrategy` ABC. A strategy is a pure function of the snapshot: no cluster call, no
-state, no training. Adding one needs **no Go change and no scheduler rebuild**.
+`SchedulingStrategy` ABC. The baselines are pure functions of the snapshot. Adding one needs
+**no Go change and no scheduler rebuild**.
+
+Our approach is `bridge/strategies/kaptain.py`, the paper's three parts without the LLM:
+Gaussian runtime estimates per task and node, one network that scores every node from its
+features (any node count), and online A2C on the delay reward. The weights are in the name:
+`kaptain-b0.5-l1` pays 0.5 per CPU-second and adds the hand-written bonus with lambda = 1
+(Phi = minus the predicted time left); `kaptain` is delay only. `-llm` takes Phi from an LLM
+instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` (`KEXP_PHASE=eval`) freeze
+the policy: best node, no update. `shortest-estimate` is the paper's simple
+rule on the same estimates. Estimates and weights live in the decider's memory: a
+redeployment starts from scratch.
 
 ```bash
 # edit STRATEGY in k8s/decider.yaml and KAPTAIN_STRATEGY in k8s/scheduler-plugin.yaml to match

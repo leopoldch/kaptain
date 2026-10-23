@@ -13,6 +13,8 @@ on:
           - largest-cpu-capacity
           - least-allocated
           - least-used
+          - shortest-estimate
+          - kaptain
 
 permissions:
   contents: read
