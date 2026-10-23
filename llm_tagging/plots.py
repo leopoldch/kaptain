@@ -19,8 +19,7 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "results" / "figures"
 # Level -> legend label, color, marker (the marker is a second cue besides color).
 LEVELS = {"pod": ("pod spec", "#2a78d6", "o"),
-          "pod_image": ("+ image", "#eb6834", "s"),
-          "pod_image_node": ("+ image + nœud", "#1baf7a", "^")}
+          "pod_image": ("+ image", "#eb6834", "s")}
 GOOD, PARTIAL, WRONG, NONE = "#0ca30c", "#eda100", "#d03b3b", "#b9b8b2"
 TEXT, MUTED, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
 
@@ -30,7 +29,9 @@ plt.rcParams.update({"font.size": 10, "axes.edgecolor": GRID, "axes.labelcolor":
 
 
 def model_name(folder):
-    return read(folder)[3]["model"]
+    settings = read(folder)[3]
+    prompt = Path(settings.get("prompt", "prompt.txt")).stem
+    return settings["model"] + "\n" + ("prompt-v1" if prompt == "prompt" else prompt)
 
 
 def bars(ax, folders, value, title, label_format):
@@ -85,11 +86,11 @@ def predicted_vs_measured(folders):
         ax.set_xticks([1, 10, 60], ["1 s", "10 s", "60 s"])
         ax.set_yticks([1, 10, 60, 600], ["1 s", "10 s", "60 s", "10 min"])
         ax.minorticks_off()
-        ax.set_title(settings["model"], loc="left", color=TEXT, fontsize=11)
+        ax.set_title(model_name(folder), loc="left", color=TEXT, fontsize=10)
         ax.set_xlabel("durée mesurée")
     axes[0].set_ylabel("durée prédite")
     axes[0].legend(loc="upper left", frameon=False, fontsize=8)
-    fig.suptitle("Durée prédite vs mesurée. Diagonale = parfait, bande grise = à moins de x2",
+    fig.suptitle("Durée prédite vs mesurée\nDiagonale = parfait, bande grise = à moins de x2",
                  x=0.01, ha="left", color=TEXT)
     fig.tight_layout()
     fig.savefig(OUT / "2-predit-vs-mesure.png", dpi=150)
@@ -154,7 +155,7 @@ def duration_grid(folders):
                     color="#ffffff" if color in [GOOD, WRONG] else TEXT)
     ax.set_xlim(0, len(columns))
     ax.set_ylim(len(cases), 0)
-    short = {"pod": "pod", "pod_image": "+image", "pod_image_node": "+nœud"}
+    short = {"pod": "pod", "pod_image": "+image"}
     ax.set_xticks([j + 0.5 for j in range(len(columns))],
                   [f"{model_name(f)}\n{short[l]}" for f, l in columns], fontsize=7)
     ax.xaxis.tick_top()
@@ -165,10 +166,53 @@ def duration_grid(folders):
         ax.spines[side].set_visible(False)
     ax.tick_params(length=0)
     ax.set_title("Erreur de durée par cas (médiane des 3 répétitions)\n"
-                 "vert <= x1.25, orange <= x2, rouge > x2 ; timer = la durée est écrite dans le spec",
+                 "vert <= x1.25, orange <= x2, rouge > x2\ntimer = la durée est écrite dans le spec",
                  loc="left", color=TEXT, fontsize=10, pad=34)
     fig.tight_layout()
     fig.savefig(OUT / "5-erreur-par-cas.png", dpi=150)
+
+
+def work_grid(folders):
+    """Most frequent answer per case and column: green exact, orange overlapping, red disjoint."""
+    columns = [(f, level) for f in folders for level in LEVELS]
+    _, references, _, _ = read(folders[0])
+    cases = sorted(k for k in references if not k.startswith("_"))
+    fig, ax = plt.subplots(figsize=(2.6 + 0.95 * len(columns), 1.8 + 0.38 * len(cases)))
+    for j, (folder, level) in enumerate(columns):
+        rows = read(folder)[0]
+        for i, case in enumerate(cases):
+            answers = [tuple(sorted(r["prediction"]["work_types"])) if r["prediction"] else None
+                       for r in rows if r["case"] == case and r["level"] == level]
+            top = max(set(answers), key=answers.count)
+            truth = set(references[case]["work_types"])
+            if top is None:
+                mark, color = "invalide", NONE
+            else:
+                mark = ",".join(top)
+                color = GOOD if set(top) == truth else PARTIAL if set(top) & truth else WRONG
+            if answers.count(top) < len(answers):
+                mark += f" ({answers.count(top)}/{len(answers)})"
+            ax.add_patch(plt.Rectangle((j + 0.04, i + 0.06), 0.92, 0.88, color=color, linewidth=0))
+            ax.text(j + 0.5, i + 0.5, mark, ha="center", va="center", fontsize=6.5,
+                    color="#ffffff" if color in [GOOD, WRONG] else TEXT)
+    ax.set_xlim(0, len(columns))
+    ax.set_ylim(len(cases), 0)
+    short = {"pod": "pod", "pod_image": "+image"}
+    ax.set_xticks([j + 0.5 for j in range(len(columns))],
+                  [f"{model_name(f)}\n{short[l]}" for f, l in columns], fontsize=7)
+    ax.xaxis.tick_top()
+    ax.set_yticks([i + 0.5 for i in range(len(cases))],
+                  [f"{c}  attendu: {','.join(references[c]['work_types'])}" for c in cases],
+                  fontsize=8, family="monospace")
+    for side in ["left", "bottom", "top"]:
+        ax.spines[side].set_visible(False)
+    ax.tick_params(length=0)
+    ax.set_title("Type de travail : réponse la plus fréquente sur 3 répétitions\n"
+                 "vert = exact, orange = en partie juste, rouge = faux, gris = invalide\n"
+                 "(2/3) = les répétitions ne sont pas d'accord",
+                 loc="left", color=TEXT, fontsize=10, pad=34)
+    fig.tight_layout()
+    fig.savefig(OUT / "6-types-par-cas.png", dpi=150)
 
 
 def main():
@@ -181,6 +225,7 @@ def main():
     latency(folders)
     measured_durations(folders[0])
     duration_grid(folders)
+    work_grid(folders)
     print(f"Figures: {OUT}")
 
 

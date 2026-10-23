@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tag each case and estimate its duration from what a scheduler knows before launch.
 
-Levels: the pod spec, + image metadata from the registry, + the candidate node.
+Levels: the pod spec, then + image metadata from the registry.
 
 Providers: ollama (local) or openai (paid, needs a budget).
 """
@@ -18,7 +18,7 @@ from urllib.request import Request, urlopen
 from report import write_report
 
 HERE = Path(__file__).resolve().parent
-LEVELS = ["pod", "pod_image", "pod_image_node"]
+LEVELS = ["pod", "pod_image"]
 TAGS = ["cpu", "memory", "disk", "network", "wait", "unknown"]
 
 
@@ -26,14 +26,12 @@ def load(path):
     return json.loads(Path(path).read_text())
 
 
-def model_input(case, level, images, node):
+def model_input(case, level, images):
     # Only what the scheduler has: never the case id, source, reference or measurement.
     task = {"pod": case["pod"]}
     if level != "pod":
         refs = sorted({c["image"] for c in case["pod"]["spec"]["containers"]})
         task["images"] = {ref: images[ref]["metadata"] for ref in refs}
-    if level == "pod_image_node":
-        task["node"] = {k: v for k, v in node.items() if not k.startswith("_")}
     return task
 
 
@@ -101,6 +99,8 @@ def main():
     parser.add_argument("--cases", help="Comma-separated IDs, default all")
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--max-tokens", type=int, default=300)
+    parser.add_argument("--prompt", type=Path, default=HERE / "prompt.txt")
+    parser.add_argument("--schema", type=Path, default=HERE / "response_schema.json")
     parser.add_argument("--out", type=Path, help="New result folder")
     parser.add_argument("--budget-usd", type=float, help="OpenAI only: stop before exceeding it")
     parser.add_argument("--input-price", type=float, help="OpenAI only: USD per million input tokens")
@@ -114,14 +114,15 @@ def main():
     if args.cases:
         cases = [c for c in cases if c["id"] in args.cases.split(",")]
     images = load(HERE / "images.json")
-    node = load(HERE / "node.json")
-    prompt = (HERE / "prompt.txt").read_text()
-    schema = load(HERE / "response_schema.json")
+    prompt = args.prompt.read_text()
+    schema = load(args.schema)
     name = args.out or HERE / "results" / (args.model.replace(":", "-").replace("/", "-") + time.strftime("-%Y%m%d-%H%M%S"))
     out = Path(name)
     out.mkdir(parents=True)
-    for file in ["cases.json", "references.json", "images.json", "node.json", "prompt.txt", "response_schema.json"]:
+    for file in ["cases.json", "references.json", "images.json"]:
         (out / file).write_bytes((HERE / file).read_bytes())
+    (out / "prompt.txt").write_text(prompt)
+    (out / "response_schema.json").write_bytes(args.schema.read_bytes())
     measured = HERE / "measurements.json"
     if measured.exists():
         (out / "measurements.json").write_bytes(measured.read_bytes())
@@ -135,7 +136,7 @@ def main():
         settings["model_digest"] = next((m["digest"] for m in installed if m["name"] == args.model), None)
         start = time.perf_counter()
         warm = post("http://localhost:11434/api/chat", request_body(
-            "ollama", args.model, prompt, model_input(cases[0], "pod", images, node), schema, args.max_tokens), args.timeout)
+            "ollama", args.model, prompt, model_input(cases[0], "pod", images), schema, args.max_tokens), args.timeout)
         settings["warmup_ms"] = round((time.perf_counter() - start) * 1000, 1)
         settings["warmup_load_ms"] = round(warm.get("load_duration", 0) / 1e6, 1)
 
@@ -144,7 +145,7 @@ def main():
     spent = 0.0
     with (out / "responses.jsonl").open("w") as file:
         for case, level, repeat in jobs:
-            task = model_input(case, level, images, node)
+            task = model_input(case, level, images)
             row = {"case": case["id"], "level": level, "repeat": repeat, "prediction": None}
             start = time.perf_counter()
             try:

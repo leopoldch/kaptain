@@ -6,12 +6,15 @@ Nothing is downloaded except the small manifest and config JSON. Writes images.j
 
 import json
 from pathlib import Path
+import platform
 import re
 import time
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 HERE = Path(__file__).resolve().parent
+# Metadata of the variant that runs on the machine where measure.py runs.
+ARCH = {"x86_64": "amd64", "aarch64": "arm64"}.get(platform.machine(), platform.machine())
 ACCEPT = ", ".join([
     "application/vnd.oci.image.index.v1+json",
     "application/vnd.docker.distribution.manifest.list.v2+json",
@@ -56,9 +59,9 @@ def collect(ref):
     base = f"https://{host}/v2/{repo}"
     token = anonymous_token(host, repo)
     manifest = get(f"{base}/manifests/{digest}", token)
-    if "manifests" in manifest:  # multi-platform index: take linux/amd64
+    if "manifests" in manifest:  # multi-platform index: take the variant of this machine
         entry = next(m for m in manifest["manifests"]
-                     if m["platform"]["os"] == "linux" and m["platform"]["architecture"] == "amd64")
+                     if m["platform"]["os"] == "linux" and m["platform"]["architecture"] == ARCH)
         manifest = get(f"{base}/manifests/{entry['digest']}", token)
     config = get(f"{base}/blobs/{manifest['config']['digest']}", token, accept="*/*")
     image = config.get("config", {})

@@ -1,9 +1,9 @@
 {
   "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662": {
     "metadata": {
-      "architecture": "amd64",
+      "architecture": "arm64",
       "os": "linux",
-      "compressed_size_bytes": 2206402,
+      "compressed_size_bytes": 1896265,
       "layer_count": 1,
       "entrypoint": null,
       "cmd": [
@@ -19,13 +19,41 @@
         "BusyBox 1.36.1 (glibc), Debian 13"
       ]
     },
-    "collection_ms": 431.8
+    "collection_ms": 555.7
+  },
+  "curlimages/curl@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 9914258,
+      "layer_count": 3,
+      "entrypoint": [
+        "/entrypoint.sh"
+      ],
+      "cmd": [
+        "curl"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "CURL_CA_BUNDLE=/cacert.pem"
+      ],
+      "exposed_ports": [],
+      "working_dir": "/home/curl_user",
+      "user": "curl_user",
+      "history": [
+        "/bin/sh -c #(nop) ADD file:ee5bb8409915b11413f44cce4c22fed658aba4fb078a448e08dd4ac9a23581f2 in / ",
+        "/bin/sh -c #(nop)  CMD [\"/bin/sh\"]",
+        "/bin/sh",
+        "/bin/sh"
+      ]
+    },
+    "collection_ms": 489.8
   },
   "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6": {
     "metadata": {
-      "architecture": "amd64",
+      "architecture": "arm64",
       "os": "linux",
-      "compressed_size_bytes": 55729325,
+      "compressed_size_bytes": 54520745,
       "layer_count": 2,
       "entrypoint": [
         "/usr/bin/stress-ng"
@@ -40,19 +68,43 @@
       "working_dir": null,
       "user": null,
       "history": [
-        "# debian.sh --arch 'amd64' out/ 'trixie' '@1789689600'",
+        "# debian.sh --arch 'arm64' out/ 'trixie' '@1789689600'",
         "COPY stress-ng/install-root/ / # buildkit",
         "ENTRYPOINT [\"/usr/bin/stress-ng\"]",
         "CMD [\"--help\"]"
       ]
     },
-    "collection_ms": 436.6
+    "collection_ms": 572.9
+  },
+  "mwader/static-ffmpeg@sha256:a8090df5f5608daef387e1b2e93b98aaacb4d92153ad904e7d715c725724fca4": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 113069543,
+      "layer_count": 1,
+      "entrypoint": [
+        "/ffmpeg"
+      ],
+      "cmd": null,
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "exposed_ports": [],
+      "working_dir": "/",
+      "user": null,
+      "history": [
+        "COPY / / # buildkit",
+        "LABEL maintainer=Mattias Wadman mattias.wadman@gmail.com",
+        "ENTRYPOINT [\"/ffmpeg\"]"
+      ]
+    },
+    "collection_ms": 587.9
   },
   "nginxinc/nginx-unprivileged@sha256:65e3e85dbaed8ba248841d9d58a899b6197106c23cb0ff1a132b7bfe0547e4c0": {
     "metadata": {
-      "architecture": "amd64",
+      "architecture": "arm64",
       "os": "linux",
-      "compressed_size_bytes": 20963272,
+      "compressed_size_bytes": 21811781,
       "layer_count": 9,
       "entrypoint": [
         "/docker-entrypoint.sh"
@@ -98,6 +150,162 @@
         "USER 101"
       ]
     },
-    "collection_ms": 367.7
+    "collection_ms": 549.1
+  },
+  "perl@sha256:db6259fc741c65297a32592e314260e5a314386fe13ddfd018f52e2292f612ea": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 61704449,
+      "layer_count": 5,
+      "entrypoint": null,
+      "cmd": [
+        "perl5.40.5",
+        "-de0"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      ],
+      "exposed_ports": [],
+      "working_dir": "/usr/src/app",
+      "user": null,
+      "history": [
+        "# debian.sh --arch 'arm64' out/ 'trixie' '@1791158400'",
+        "COPY *.patch /usr/src/perl/ # buildkit",
+        "WORKDIR /usr/src/perl",
+        "RUN /bin/sh -c apt-get update     && apt-get install -y --no-install-recommends        bzip2        ca-certificates        curl        dpkg-dev        gcc        libc6-dev        make        netbase  ",
+        "WORKDIR /usr/src/app",
+        "CMD [\"perl5.40.5\" \"-de0\"]"
+      ]
+    },
+    "collection_ms": 620.4
+  },
+  "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 115020527,
+      "layer_count": 10,
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "cmd": [
+        "postgres"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "GOSU_VERSION=1.19",
+        "LANG=en_US.utf8",
+        "PG_MAJOR=17",
+        "PG_VERSION=17.11",
+        "PG_SHA256=dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979",
+        "DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
+        "PGDATA=/var/lib/postgresql/data"
+      ],
+      "exposed_ports": [
+        "5432/tcp"
+      ],
+      "working_dir": "/",
+      "user": null,
+      "history": [
+        "ENV GOSU_VERSION=1.19",
+        "RUN /bin/sh -c set -eux; \t\tapk add --no-cache --virtual .gosu-deps \t\tca-certificates \t\tdpkg \t\tgnupg \t; \t\tdpkgArch=\"$(dpkg --print-architecture | awk -F- '{ print $NF }')\"; \twget -O /usr/local/bin/gosu",
+        "ENV LANG=en_US.utf8",
+        "RUN /bin/sh -c mkdir /docker-entrypoint-initdb.d # buildkit",
+        "ENV PG_MAJOR=17",
+        "ENV PG_VERSION=17.11",
+        "ENV PG_SHA256=dd27f2b3c59e73ed14aa3324901242bf69a032a6347805f274e6260322d42979",
+        "ENV DOCKER_PG_LLVM_DEPS=llvm21-dev \t\tclang21",
+        "RUN /bin/sh -c set -eux; \t\twget -O postgresql.tar.bz2 \"https://ftp.postgresql.org/pub/source/v$PG_VERSION/postgresql-$PG_VERSION.tar.bz2\"; \techo \"$PG_SHA256 *postgresql.tar.bz2\" | sha256sum -c -; \tmkd",
+        "RUN /bin/sh -c set -eux; \tcp -v /usr/local/share/postgresql/postgresql.conf.sample /usr/local/share/postgresql/postgresql.conf.sample.orig; \tsed -ri \"s!^#?(listen_addresses)\\s*=\\s*\\S+.*!\\1 = '*'!\" /us",
+        "RUN /bin/sh -c install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql # buildkit",
+        "ENV PGDATA=/var/lib/postgresql/data",
+        "RUN /bin/sh -c install --verbose --directory --owner postgres --group postgres --mode 1777 \"$PGDATA\" # buildkit",
+        "VOLUME [/var/lib/postgresql/data]",
+        "COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/ # buildkit",
+        "RUN /bin/sh -c ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh # buildkit",
+        "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+        "STOPSIGNAL SIGINT",
+        "EXPOSE map[5432/tcp:{}]",
+        "CMD [\"postgres\"]"
+      ]
+    },
+    "collection_ms": 472.9
+  },
+  "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 43533362,
+      "layer_count": 4,
+      "entrypoint": null,
+      "cmd": [
+        "python3"
+      ],
+      "env": [
+        "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "LANG=C.UTF-8",
+        "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+        "PYTHON_VERSION=3.12.15",
+        "PYTHON_SHA256=c2c4321961fab0fb999d66e0cecf521c2ab3994c7992873ea99e306c1094fd5a"
+      ],
+      "exposed_ports": [],
+      "working_dir": null,
+      "user": null,
+      "history": [
+        "# debian.sh --arch 'arm64' out/ 'trixie' '@1791158400'",
+        "ENV PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "ENV LANG=C.UTF-8",
+        "RUN /bin/sh -c set -eux; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tca-certificates \t\tnetbase \t\ttzdata \t; \tapt-get dist-clean # buildkit",
+        "ENV GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+        "ENV PYTHON_VERSION=3.12.15",
+        "ENV PYTHON_SHA256=c2c4321961fab0fb999d66e0cecf521c2ab3994c7992873ea99e306c1094fd5a",
+        "RUN /bin/sh -c set -eux; \t\tsavedAptMark=\"$(apt-mark showmanual)\"; \tapt-get update; \tapt-get install -y --no-install-recommends \t\tdpkg-dev \t\tg++ \t\tgcc \t\tgnupg \t\tlibbluetooth-dev \t\tlibbz2-dev \t\tlibc6-de",
+        "RUN /bin/sh -c set -eux; \tfor src in idle3 pip3 pydoc3 python3 python3-config; do \t\tdst=\"$(echo \"$src\" | tr -d 3)\"; \t\t[ -s \"/usr/local/bin/$src\" ]; \t\t[ ! -e \"/usr/local/bin/$dst\" ]; \t\tln -svT \"$src\" \"",
+        "CMD [\"python3\"]"
+      ]
+    },
+    "collection_ms": 535.5
+  },
+  "redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499": {
+    "metadata": {
+      "architecture": "arm64",
+      "os": "linux",
+      "compressed_size_bytes": 16757555,
+      "layer_count": 7,
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "cmd": [
+        "redis-server"
+      ],
+      "env": [
+        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+        "REDIS_VERSION=7.4.11"
+      ],
+      "exposed_ports": [
+        "6379/tcp"
+      ],
+      "working_dir": "/data",
+      "user": null,
+      "history": [
+        "ADD alpine-minirootfs-3.21.8-aarch64.tar.gz / # buildkit",
+        "CMD [\"/bin/sh\"]",
+        "RUN /bin/sh -c set -eux; \taddgroup -S -g 1000 redis; \tadduser -S -G redis -u 999 redis # buildkit",
+        "RUN /bin/sh -c set -eux; \tapk add --no-cache \t\ttzdata \t\tsetpriv \t; # buildkit",
+        "ENV REDIS_VERSION=7.4.11",
+        "ARG REDIS_DOWNLOAD_URL=https://github.com/redis/redis/archive/refs/tags/7.4.11.tar.gz",
+        "ARG REDIS_DOWNLOAD_SHA=e973da69febfea096ab94690b44bf976482788a1b5e070df373b4f27697d57d4",
+        "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/archive/refs/tags/7.4.11.tar.gz REDIS_DOWNLOAD_SHA=e973da69febfea096ab94690b44bf976482788a1b5e070df373b4f27697d57d4 /bin/sh -c set -eux; \t\tapk ",
+        "RUN |2 REDIS_DOWNLOAD_URL=https://github.com/redis/redis/archive/refs/tags/7.4.11.tar.gz REDIS_DOWNLOAD_SHA=e973da69febfea096ab94690b44bf976482788a1b5e070df373b4f27697d57d4 /bin/sh -c mkdir /data && c",
+        "VOLUME [/data]",
+        "WORKDIR /data",
+        "COPY docker-entrypoint.sh /usr/local/bin/ # buildkit",
+        "ENTRYPOINT [\"docker-entrypoint.sh\"]",
+        "EXPOSE map[6379/tcp:{}]",
+        "CMD [\"redis-server\"]"
+      ]
+    },
+    "collection_ms": 455.8
   }
 }

@@ -3,7 +3,9 @@
 
 Duration comes from Docker's own start/finish timestamps (no pull, no creation).
 CPU time, peak memory and disk bytes come from the container's cgroup, read every
-0.2 s while it runs, so the last 0.2 s may be missing. Writes measurements.json.
+0.2 s while it runs, so the last 0.2 s may be missing. On macOS, Docker runs in a VM
+whose cgroups the host cannot read: only the duration is measured there.
+Writes measurements.json.
 """
 
 import argparse
@@ -91,10 +93,20 @@ def run_once(case, repeat):
 
 
 def cpu_model():
+    if platform.system() == "Darwin":
+        return subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                              capture_output=True, text=True).stdout.strip()
     for line in Path("/proc/cpuinfo").read_text().splitlines():
         if line.startswith("model name"):
             return line.split(":", 1)[1].strip()
     return platform.machine()
+
+
+def docker_host():
+    # Where containers really run: on macOS, a VM with its own CPU count and memory.
+    out = subprocess.run(["docker", "info", "--format", "{{.NCPU}} {{.MemTotal}} {{.OperatingSystem}}"],
+                         capture_output=True, text=True).stdout.split(maxsplit=2)
+    return {"cpus": int(out[0]), "memory_bytes": int(out[1]), "os": out[2].strip()}
 
 
 def main():
@@ -108,7 +120,7 @@ def main():
         cases = [c for c in cases if c["id"] in args.cases.split(",")]
     for image in sorted({c["pod"]["spec"]["containers"][0]["image"] for c in cases}):
         subprocess.run(["docker", "pull", "-q", image], check=True, capture_output=True)
-    result = {"host": {"cpu": cpu_model(),
+    result = {"host": {"cpu": cpu_model(), "docker": docker_host(),
                        "cores": os.cpu_count(), "load_average_at_start": os.getloadavg(),
                        "date": time.strftime("%Y-%m-%d %H:%M:%S %z")},
               "cases": {}}

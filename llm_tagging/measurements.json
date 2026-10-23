@@ -1,469 +1,1084 @@
 {
  "host": {
-  "cpu": "AMD Ryzen 7 2700X Eight-Core Processor",
-  "cores": 16,
+  "cpu": "Apple M2",
+  "docker": {
+   "cpus": 8,
+   "memory_bytes": 8218316800,
+   "os": "Docker Desktop"
+  },
+  "cores": 8,
   "load_average_at_start": [
-   2.05078125,
-   1.63037109375,
-   2.02685546875
+   6.26611328125,
+   4.78515625,
+   4.0537109375
   ],
-  "date": "2026-10-09 16:27:08 -0400"
+  "date": "2026-10-09 18:54:50 -0400"
  },
  "cases": {
   "c01": [
    {
     "repeat": 1,
-    "seconds": 7.841,
-    "class": "short",
+    "seconds": 30.059,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 3.832623,
-    "memory_peak_bytes": 14143488,
-    "read_bytes": 10076160,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.70 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 29.90 secs"
    },
    {
     "repeat": 2,
-    "seconds": 7.741,
-    "class": "short",
+    "seconds": 28.962,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 3.848018,
-    "memory_peak_bytes": 5742592,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.63 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 28.90 secs"
    },
    {
     "repeat": 3,
-    "seconds": 7.663,
-    "class": "short",
+    "seconds": 29.338,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 3.750321,
-    "memory_peak_bytes": 6529024,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.55 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 29.28 secs"
    }
   ],
   "c02": [
    {
     "repeat": 1,
-    "seconds": 67.182,
-    "class": "long",
+    "seconds": 59.881,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 33.503769,
-    "memory_peak_bytes": 153632768,
-    "read_bytes": 131072,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 7.07 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 59.81 secs"
    },
    {
     "repeat": 2,
-    "seconds": 67.43,
-    "class": "long",
+    "seconds": 27.48,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 33.710134,
-    "memory_peak_bytes": 153481216,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 7.31 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 27.43 secs"
    },
    {
     "repeat": 3,
-    "seconds": 67.107,
-    "class": "long",
+    "seconds": 27.246,
+    "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 33.488064,
-    "memory_peak_bytes": 153362432,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 6.99 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 27.18 secs"
    }
   ],
   "c03": [
    {
     "repeat": 1,
-    "seconds": 1.168,
+    "seconds": 0.807,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.53892,
-    "memory_peak_bytes": 140681216,
-    "read_bytes": 20480,
-    "write_bytes": 536870912,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1.05 sec"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 0 secs"
    },
    {
     "repeat": 2,
-    "seconds": 2.878,
+    "seconds": 0.751,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.525238,
-    "memory_peak_bytes": 140378112,
-    "read_bytes": 0,
-    "write_bytes": 666238976,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 2.77 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 0 secs"
    },
    {
     "repeat": 3,
-    "seconds": 1.088,
+    "seconds": 0.927,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.449635,
-    "memory_peak_bytes": 140500992,
-    "read_bytes": 0,
-    "write_bytes": 536870912,
     "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 0 secs"
    }
   ],
   "c04": [
    {
     "repeat": 1,
-    "seconds": 60.174,
+    "seconds": 60.122,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.052533,
-    "memory_peak_bytes": 21045248,
-    "read_bytes": 6696960,
-    "write_bytes": 4096,
-    "last_output": "2026/10/09 20:29:25 [notice] 22#22: exit\n2026/10/09 20:29:25 [notice] 20#20: exit\n2026/10/09 20:29:25 [notice] 11#11: exit\n2026/10/09 20:29:25 [notice] 24#24: exit\n2026/10/09 20:29:25 [notice] 25#25: exit"
+    "last_output": "2026/10/09 22:57:22 [notice] 9#9: exiting\n2026/10/09 22:57:22 [notice] 17#17: exiting\n2026/10/09 22:57:22 [notice] 11#11: exiting\n2026/10/09 22:57:22 [notice] 13#13: exiting\n2026/10/09 22:57:22 [notice] 16#16: gracefully shutting down"
    },
    {
     "repeat": 2,
-    "seconds": 60.147,
+    "seconds": 60.103,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.046664,
-    "memory_peak_bytes": 15163392,
-    "read_bytes": 0,
-    "write_bytes": 4096,
-    "last_output": "2026/10/09 20:36:32 [notice] 20#20: exit\n2026/10/09 20:36:32 [notice] 22#22: exit\n2026/10/09 20:36:32 [notice] 16#16: exit\n2026/10/09 20:36:32 [notice] 24#24: exit\n2026/10/09 20:36:32 [notice] 18#18: gracefully shutting down"
+    "last_output": "2026/10/10 00:15:56 [notice] 8#8: exit\n2026/10/10 00:15:56 [notice] 11#11: exit\n2026/10/10 00:15:56 [notice] 15#15: exit\n2026/10/10 00:15:56 [notice] 12#12: exit\n2026/10/10 00:15:56 [notice] 9#9: exit"
    },
    {
     "repeat": 3,
-    "seconds": 60.158,
+    "seconds": 60.104,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.04618,
-    "memory_peak_bytes": 14307328,
-    "read_bytes": 0,
-    "write_bytes": 4096,
-    "last_output": "2026/10/09 20:43:37 [notice] 17#17: exiting\n2026/10/09 20:43:37 [notice] 21#21: exiting\n2026/10/09 20:43:37 [notice] 18#18: exit\n2026/10/09 20:43:37 [notice] 17#17: exit\n2026/10/09 20:43:37 [notice] 21#21: exit"
+    "last_output": "2026/10/10 00:28:44 [notice] 10#10: exit\n2026/10/10 00:28:44 [notice] 16#16: exit\n2026/10/10 00:28:44 [notice] 11#11: exit\n2026/10/10 00:28:44 [notice] 12#12: exit\n2026/10/10 00:28:44 [notice] 13#13: exit"
    }
   ],
   "c05": [
    {
     "repeat": 1,
-    "seconds": 60.104,
+    "seconds": 266.657,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.029832,
-    "memory_peak_bytes": 5718016,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 2,
-    "seconds": 60.095,
+    "seconds": 60.053,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.02672,
-    "memory_peak_bytes": 5218304,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 3,
-    "seconds": 60.095,
+    "seconds": 60.044,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.026718,
-    "memory_peak_bytes": 5971968,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    }
   ],
   "c06": [
    {
     "repeat": 1,
-    "seconds": 2.1,
+    "seconds": 2.068,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.02746,
-    "memory_peak_bytes": 6500352,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 2,
-    "seconds": 2.098,
+    "seconds": 2.065,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.027014,
-    "memory_peak_bytes": 5410816,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 3,
-    "seconds": 2.096,
+    "seconds": 2.055,
     "class": "short",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.027047,
-    "memory_peak_bytes": 5730304,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    }
   ],
   "c07": [
    {
     "repeat": 1,
-    "seconds": 20.095,
+    "seconds": 54.716,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.027458,
-    "memory_peak_bytes": 5427200,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 2,
-    "seconds": 20.094,
+    "seconds": 20.055,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.02679,
-    "memory_peak_bytes": 5451776,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 3,
-    "seconds": 20.092,
+    "seconds": 20.046,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.02686,
-    "memory_peak_bytes": 6004736,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    }
   ],
   "c08": [
    {
     "repeat": 1,
-    "seconds": 90.099,
+    "seconds": 184.405,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.027525,
-    "memory_peak_bytes": 6283264,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 2,
-    "seconds": 90.097,
+    "seconds": 90.057,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.026499,
-    "memory_peak_bytes": 5894144,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    },
    {
     "repeat": 3,
-    "seconds": 90.095,
+    "seconds": 90.052,
     "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.027424,
-    "memory_peak_bytes": 5697536,
-    "read_bytes": 0,
-    "write_bytes": 0,
     "last_output": ""
    }
   ],
   "c09": [
    {
     "repeat": 1,
-    "seconds": 20.28,
+    "seconds": 20.306,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.065646,
-    "memory_peak_bytes": 139456512,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.17 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.23 secs"
    },
    {
     "repeat": 2,
-    "seconds": 20.234,
+    "seconds": 20.277,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.070066,
-    "memory_peak_bytes": 138723328,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.12 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.22 secs"
    },
    {
     "repeat": 3,
-    "seconds": 20.299,
+    "seconds": 20.297,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.074344,
-    "memory_peak_bytes": 138956800,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.19 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.23 secs"
    }
   ],
   "c10": [
    {
     "repeat": 1,
-    "seconds": 20.163,
+    "seconds": 52.651,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.063394,
-    "memory_peak_bytes": 142680064,
-    "read_bytes": 20480,
-    "write_bytes": 3859087360,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.04 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 52.59 secs"
    },
    {
     "repeat": 2,
-    "seconds": 20.158,
+    "seconds": 20.088,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.061117,
-    "memory_peak_bytes": 142635008,
-    "read_bytes": 0,
-    "write_bytes": 6174015488,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.04 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.02 secs"
    },
    {
     "repeat": 3,
-    "seconds": 20.177,
+    "seconds": 20.071,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 10.075227,
-    "memory_peak_bytes": 142561280,
-    "read_bytes": 36864,
-    "write_bytes": 6039797760,
-    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.06 secs"
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.02 secs"
    }
   ],
   "c11": [
    {
     "repeat": 1,
-    "seconds": 20.151,
+    "seconds": 52.831,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.059857,
-    "memory_peak_bytes": 17399808,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "2026/10/09 20:33:19 [notice] 25#25: gracefully shutting down\n2026/10/09 20:33:19 [notice] 24#24: exiting\n2026/10/09 20:33:19 [notice] 25#25: exiting\n2026/10/09 20:33:19 [notice] 16#16: gracefully shutting down\n2026/10/09 20:33:19 [notice] 16#16: exiting"
+    "last_output": "2026/10/09 23:07:58 [notice] 11#11: exit\n2026/10/09 23:07:58 [notice] 17#17: gracefully shutting down\n2026/10/09 23:07:58 [notice] 14#14: exit\n2026/10/09 23:07:58 [notice] 17#17: exiting\n2026/10/09 23:07:58 [notice] 17#17: exit"
    },
    {
     "repeat": 2,
-    "seconds": 20.154,
+    "seconds": 20.122,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.059383,
-    "memory_peak_bytes": 16424960,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "2026/10/09 20:40:27 [notice] 17#17: exiting\n2026/10/09 20:40:27 [notice] 16#16: exiting\n2026/10/09 20:40:27 [notice] 17#17: exit\n2026/10/09 20:40:27 [notice] 16#16: exit\n2026/10/09 20:40:27 [notice] 13#13: exit"
+    "last_output": "2026/10/10 00:19:50 [notice] 11#11: gracefully shutting down\n2026/10/10 00:19:50 [notice] 10#10: exiting\n2026/10/10 00:19:50 [notice] 11#11: exiting\n2026/10/10 00:19:50 [notice] 11#11: exit\n2026/10/10 00:19:50 [notice] 10#10: exit"
    },
    {
     "repeat": 3,
-    "seconds": 20.142,
+    "seconds": 20.103,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 0.060674,
-    "memory_peak_bytes": 16961536,
-    "read_bytes": 0,
-    "write_bytes": 0,
-    "last_output": "2026/10/09 20:47:31 [notice] 10#10: exit\n2026/10/09 20:47:31 [notice] 14#14: exit\n2026/10/09 20:47:31 [notice] 9#9: exit\n2026/10/09 20:47:31 [notice] 16#16: gracefully shutting down\n2026/10/09 20:47:31 [notice] 16#16: exiting"
+    "last_output": "2026/10/10 00:32:38 [notice] 11#11: exit\n2026/10/10 00:32:38 [notice] 10#10: exit\n2026/10/10 00:32:38 [notice] 14#14: gracefully shutting down\n2026/10/10 00:32:38 [notice] 14#14: exiting\n2026/10/10 00:32:38 [notice] 14#14: exit"
    }
   ],
   "c12": [
    {
     "repeat": 1,
-    "seconds": 53.529,
-    "class": "medium",
+    "seconds": 60.773,
+    "class": "long",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 15.582328,
-    "memory_peak_bytes": 67108864,
-    "read_bytes": 267259904,
-    "write_bytes": 527851520,
     "last_output": ""
    },
    {
     "repeat": 2,
-    "seconds": 52.634,
+    "seconds": 25.632,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 15.584383,
-    "memory_peak_bytes": 67108864,
-    "read_bytes": 268439552,
-    "write_bytes": 523501568,
     "last_output": ""
    },
    {
     "repeat": 3,
-    "seconds": 52.571,
+    "seconds": 24.851,
     "class": "medium",
     "exit_code": 0,
     "oom_killed": false,
-    "cpu_seconds": 15.437558,
-    "memory_peak_bytes": 67108864,
-    "read_bytes": 266862592,
-    "write_bytes": 520142848,
     "last_output": ""
+   }
+  ],
+  "t01": [
+   {
+    "repeat": 1,
+    "seconds": 2.5,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 2.44 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.401,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 2.33 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 2.389,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 2.33 secs"
+   }
+  ],
+  "t02": [
+   {
+    "repeat": 1,
+    "seconds": 10.127,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 10.07 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 9.713,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 9.66 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 9.546,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 9.49 secs"
+   }
+  ],
+  "t03": [
+   {
+    "repeat": 1,
+    "seconds": 74.718,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 14.65 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 39.356,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 39.30 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 38.99,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 38.94 secs"
+   }
+  ],
+  "t04": [
+   {
+    "repeat": 1,
+    "seconds": 1080.994,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.856,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 2.884,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t05": [
+   {
+    "repeat": 1,
+    "seconds": 16.187,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 17.245,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 13.682,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t06": [
+   {
+    "repeat": 1,
+    "seconds": 63.742,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 63.75,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 67.442,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t07": [
+   {
+    "repeat": 1,
+    "seconds": 0.161,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333332833333500000"
+   },
+   {
+    "repeat": 2,
+    "seconds": 0.244,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333332833333500000"
+   },
+   {
+    "repeat": 3,
+    "seconds": 0.175,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333332833333500000"
+   }
+  ],
+  "t08": [
+   {
+    "repeat": 1,
+    "seconds": 1.59,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 2,
+    "seconds": 1.45,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 3,
+    "seconds": 1.616,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   }
+  ],
+  "t09": [
+   {
+    "repeat": 1,
+    "seconds": 16.092,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333328333333350000000"
+   },
+   {
+    "repeat": 2,
+    "seconds": 15.416,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333328333333350000000"
+   },
+   {
+    "repeat": 3,
+    "seconds": 15.656,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333328333333350000000"
+   }
+  ],
+  "t10": [
+   {
+    "repeat": 1,
+    "seconds": 0.094,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ".1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491"
+   },
+   {
+    "repeat": 2,
+    "seconds": 0.08,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ".1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491"
+   },
+   {
+    "repeat": 3,
+    "seconds": 0.075,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ".1415926535897932384626433832795028841971693993751058209749445923078164062862089986280348253421170679821480865132823066470938446095505822317253594081284811174502841027019385211055596446229489549303819644288109756659334461284756482337867831652712019091456485669234603486104543266482133936072602491412737245870066063155881748815209209628292540917153643678925903600113305305488204665213841469519415116094330572703657595919530921861173819326117931051185480744623799627495673518857527248912279381830119491"
+   }
+  ],
+  "t11": [
+   {
+    "repeat": 1,
+    "seconds": 1.664,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "93809525720106548586327886593615338182796823030195203530185296899577362259941389124972177528347913151557485724245415069595082953311686172785588907509838175463746493931925506040092770167113900984882401285836160356370766010471018194295559619894676783744944825537977472684710404753464620804668425906949129331367702898915210475216205696602405803815019351125338243003558764024749647326391419927260426992279678235478163600934172164121992458631503028618297455570674983850549458858692699569092721079750930296"
+   },
+   {
+    "repeat": 2,
+    "seconds": 1.629,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "93809525720106548586327886593615338182796823030195203530185296899577362259941389124972177528347913151557485724245415069595082953311686172785588907509838175463746493931925506040092770167113900984882401285836160356370766010471018194295559619894676783744944825537977472684710404753464620804668425906949129331367702898915210475216205696602405803815019351125338243003558764024749647326391419927260426992279678235478163600934172164121992458631503028618297455570674983850549458858692699569092721079750930296"
+   },
+   {
+    "repeat": 3,
+    "seconds": 1.674,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "93809525720106548586327886593615338182796823030195203530185296899577362259941389124972177528347913151557485724245415069595082953311686172785588907509838175463746493931925506040092770167113900984882401285836160356370766010471018194295559619894676783744944825537977472684710404753464620804668425906949129331367702898915210475216205696602405803815019351125338243003558764024749647326391419927260426992279678235478163600934172164121992458631503028618297455570674983850549458858692699569092721079750930296"
+   }
+  ],
+  "t12": [
+   {
+    "repeat": 1,
+    "seconds": 2428.659,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "26711136990865851639831501970165151168517143765761835155650884909989859982387345528331635507647918535893226185489632132933089857064204675259070915481416549859461637180270981994309924488957571282890592323326097299712084433573265489382391193259746366730583604142813883032038249037589852437441702913276561809377344403070746921120191302033038019762110110044929321516084244485963766983895228684783123552658213144957685726243344189303968642624341077322697802807318915441101044682325271620105265227211166040"
+   },
+   {
+    "repeat": 2,
+    "seconds": 14.401,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "26711136990865851639831501970165151168517143765761835155650884909989859982387345528331635507647918535893226185489632132933089857064204675259070915481416549859461637180270981994309924488957571282890592323326097299712084433573265489382391193259746366730583604142813883032038249037589852437441702913276561809377344403070746921120191302033038019762110110044929321516084244485963766983895228684783123552658213144957685726243344189303968642624341077322697802807318915441101044682325271620105265227211166040"
+   },
+   {
+    "repeat": 3,
+    "seconds": 14.344,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "26711136990865851639831501970165151168517143765761835155650884909989859982387345528331635507647918535893226185489632132933089857064204675259070915481416549859461637180270981994309924488957571282890592323326097299712084433573265489382391193259746366730583604142813883032038249037589852437441702913276561809377344403070746921120191302033038019762110110044929321516084244485963766983895228684783123552658213144957685726243344189303968642624341077322697802807318915441101044682325271620105265227211166040"
+   }
+  ],
+  "t13": [
+   {
+    "repeat": 1,
+    "seconds": 0.314,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 0.299,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 0.33,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t14": [
+   {
+    "repeat": 1,
+    "seconds": 4.483,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 3.883,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 3.878,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t15": [
+   {
+    "repeat": 1,
+    "seconds": 20.498,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 19.211,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 19.139,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t16": [
+   {
+    "repeat": 1,
+    "seconds": 1.07,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 0.992,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 0.991,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t17": [
+   {
+    "repeat": 1,
+    "seconds": 9.227,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 9.188,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 9.012,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t18": [
+   {
+    "repeat": 1,
+    "seconds": 10.53,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 11.253,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 11.051,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t19": [
+   {
+    "repeat": 1,
+    "seconds": 43.293,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 46.93,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 44.797,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t20": [
+   {
+    "repeat": 1,
+    "seconds": 29.518,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 29.45 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 34.953,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 34.90 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 33.915,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 33.85 secs"
+   }
+  ],
+  "t21": [
+   {
+    "repeat": 1,
+    "seconds": 39.514,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 45.577,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 46.221,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t22": [
+   {
+    "repeat": 1,
+    "seconds": 4.558,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 2,
+    "seconds": 5.318,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 3,
+    "seconds": 6.098,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   }
+  ],
+  "t23": [
+   {
+    "repeat": 1,
+    "seconds": 4.599,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 4.53 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 4.552,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 4.49 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 4.512,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 4.46 secs"
+   }
+  ],
+  "t24": [
+   {
+    "repeat": 1,
+    "seconds": 7.711,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 11.209,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 11.649,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t25": [
+   {
+    "repeat": 1,
+    "seconds": 0.787,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 2,
+    "seconds": 0.768,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   },
+   {
+    "repeat": 3,
+    "seconds": 0.831,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "333333283333335000000"
+   }
+  ],
+  "t26": [
+   {
+    "repeat": 1,
+    "seconds": 3.654,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "number of transactions actually processed: 4000/4000\nnumber of failed transactions: 0 (0.000%)\nlatency average = 2.074 ms\ninitial connection time = 2.465 ms\ntps = 1929.049557 (without initial connection time)"
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.803,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "number of transactions actually processed: 4000/4000\nnumber of failed transactions: 0 (0.000%)\nlatency average = 1.224 ms\ninitial connection time = 2.709 ms\ntps = 3268.051286 (without initial connection time)"
+   },
+   {
+    "repeat": 3,
+    "seconds": 4.735,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "number of transactions actually processed: 4000/4000\nnumber of failed transactions: 0 (0.000%)\nlatency average = 3.071 ms\ninitial connection time = 2.509 ms\ntps = 1302.595128 (without initial connection time)"
+   }
+  ],
+  "t27": [
+   {
+    "repeat": 1,
+    "seconds": 2.84,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "                          \nGET: rps=118540.0 (overall: 138722.0) avg_msec=0.331 (overall: 0.269)\n                                                                      \nGET: rps=165704.0 (overall: 144723.3) avg_msec=0.211 (overall: 0.254)\n                                                                      \nGET: rps=124348.0 (overall: 141016.0) avg_msec=0.294 (overall: 0.261)\n                                                                      \nGET: 143061.52 requests per second, p50=0.103 msec"
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.821,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "                          \nGET: rps=123156.0 (overall: 143299.1) avg_msec=0.244 (overall: 0.220)\n                                                                      \nGET: rps=165220.0 (overall: 149179.2) avg_msec=0.210 (overall: 0.217)\n                                                                      \nGET: rps=116820.0 (overall: 142335.0) avg_msec=0.335 (overall: 0.237)\n                                                                      \nGET: 142959.25 requests per second, p50=0.103 msec"
+   },
+   {
+    "repeat": 3,
+    "seconds": 2.861,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "                          \nGET: rps=121544.0 (overall: 140092.4) avg_msec=0.320 (overall: 0.257)\n                                                                      \nGET: rps=161684.0 (overall: 144929.2) avg_msec=0.217 (overall: 0.247)\n                                                                      \nGET: rps=118852.0 (overall: 140156.7) avg_msec=0.278 (overall: 0.252)\n                                                                      \nGET: 142959.25 requests per second, p50=0.103 msec"
+   }
+  ],
+  "t28": [
+   {
+    "repeat": 1,
+    "seconds": 2.807,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.836,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 2.886,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": ""
+   }
+  ],
+  "t29": [
+   {
+    "repeat": 1,
+    "seconds": 8.959,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767  /tmp/blob"
+   },
+   {
+    "repeat": 2,
+    "seconds": 11.054,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767  /tmp/blob"
+   },
+   {
+    "repeat": 3,
+    "seconds": 11.071,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "last_output": "9acca8e8c22201155389f65abbf6bc9723edc7384ead80503839f49dcc56d767  /tmp/blob"
    }
   ]
  }

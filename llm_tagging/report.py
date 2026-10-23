@@ -13,7 +13,7 @@ import statistics
 import sys
 
 TAGS = ["cpu", "memory", "disk", "network", "wait", "unknown"]
-LEVELS = ["pod", "pod_image", "pod_image_node"]
+LEVELS = ["pod", "pod_image"]
 
 
 def read(folder):
@@ -113,7 +113,7 @@ def write_report(folder):
             cells.append(f"{percent(c['tp'], c['tp'] + c['fp'])} / {percent(c['tp'], c['tp'] + c['fn'])}")
         lines.append(f"| {tag} | " + " | ".join(cells) + " |")
     lines += ["", "## Answers (work types; seconds of each repeat)", "",
-              "| Case | Reference | Measured | " + " | ".join(LEVELS) + " |", "|---|---|---|---|---|---|"]
+              "| Case | Reference | Measured | " + " | ".join(LEVELS) + " |", "|---" * (3 + len(LEVELS)) + "|"]
     for case in sorted(measured):
         cells = []
         for level in LEVELS:

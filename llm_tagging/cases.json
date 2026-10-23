@@ -612,11 +612,1515 @@
       "resources": {
        "requests": {
         "cpu": "500m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t01",
+  "source": "stress-cpu: CPU stressor, 500 operations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6",
+      "command": [
+       "stress-ng",
+       "--cpu",
+       "1",
+       "--cpu-ops",
+       "500",
+       "--temp-path",
+       "/tmp",
+       "--metrics-brief"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
         "memory": "64Mi"
        },
        "limits": {
         "cpu": "500m",
         "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t02",
+  "source": "stress-cpu: CPU stressor, 2000 operations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6",
+      "command": [
+       "stress-ng",
+       "--cpu",
+       "1",
+       "--cpu-ops",
+       "2000",
+       "--temp-path",
+       "/tmp",
+       "--metrics-brief"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t03",
+  "source": "stress-cpu: CPU stressor, 8000 operations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6",
+      "command": [
+       "stress-ng",
+       "--cpu",
+       "1",
+       "--cpu-ops",
+       "8000",
+       "--temp-path",
+       "/tmp",
+       "--metrics-brief"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t04",
+  "source": "gzip: 32 MiB of random data written then gzipped.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 33554432 /dev/urandom > /tmp/in && gzip -c /tmp/in > /tmp/in.gz"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t05",
+  "source": "gzip: 128 MiB of random data written then gzipped.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 134217728 /dev/urandom > /tmp/in && gzip -c /tmp/in > /tmp/in.gz"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t06",
+  "source": "gzip: 512 MiB of random data written then gzipped.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 536870912 /dev/urandom > /tmp/in && gzip -c /tmp/in > /tmp/in.gz"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t07",
+  "source": "python-loop: Pure-Python arithmetic loop, 1000000 iterations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "python",
+       "-c",
+       "s = 0\nfor i in range(1000000):\n    s += i * i\nprint(s)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t08",
+  "source": "python-loop: Pure-Python arithmetic loop, 10000000 iterations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "python",
+       "-c",
+       "s = 0\nfor i in range(10000000):\n    s += i * i\nprint(s)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t09",
+  "source": "python-loop: Pure-Python arithmetic loop, 100000000 iterations.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "python",
+       "-c",
+       "s = 0\nfor i in range(100000000):\n    s += i * i\nprint(s)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t10",
+  "source": "perl-pi: Computes pi to 500 digits (Kubernetes Job example).",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "perl@sha256:db6259fc741c65297a32592e314260e5a314386fe13ddfd018f52e2292f612ea",
+      "command": [
+       "perl",
+       "-Mbignum=bpi",
+       "-wle",
+       "print bpi(500)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t11",
+  "source": "perl-pi: Computes pi to 1500 digits (Kubernetes Job example).",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "perl@sha256:db6259fc741c65297a32592e314260e5a314386fe13ddfd018f52e2292f612ea",
+      "command": [
+       "perl",
+       "-Mbignum=bpi",
+       "-wle",
+       "print bpi(1500)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t12",
+  "source": "perl-pi: Computes pi to 4000 digits (Kubernetes Job example).",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "perl@sha256:db6259fc741c65297a32592e314260e5a314386fe13ddfd018f52e2292f612ea",
+      "command": [
+       "perl",
+       "-Mbignum=bpi",
+       "-wle",
+       "print bpi(4000)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "128Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t13",
+  "source": "sort: Shuffles then sorts 100000 numbers through files.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "seq 1 100000 | shuf > /tmp/numbers && sort -n /tmp/numbers > /tmp/sorted"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t14",
+  "source": "sort: Shuffles then sorts 1000000 numbers through files.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "seq 1 1000000 | shuf > /tmp/numbers && sort -n /tmp/numbers > /tmp/sorted"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t15",
+  "source": "sort: Shuffles then sorts 4000000 numbers through files.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "seq 1 4000000 | shuf > /tmp/numbers && sort -n /tmp/numbers > /tmp/sorted"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t16",
+  "source": "download: Downloads a 10 MB file and discards it.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "curlimages/curl@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b",
+      "command": [
+       "curl",
+       "-sSf",
+       "-o",
+       "/dev/null",
+       "http://cachefly.cachefly.net/10mb.test"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t17",
+  "source": "download: Downloads a 100 MB file and discards it.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "curlimages/curl@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b",
+      "command": [
+       "curl",
+       "-sSf",
+       "-o",
+       "/dev/null",
+       "http://cachefly.cachefly.net/100mb.test"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t18",
+  "source": "ffmpeg: Encodes 10 s of 720p test video to H.264, output discarded; duration= is the video length, not a run time.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "mwader/static-ffmpeg@sha256:a8090df5f5608daef387e1b2e93b98aaacb4d92153ad904e7d715c725724fca4",
+      "command": [
+       "/ffmpeg",
+       "-v",
+       "error",
+       "-f",
+       "lavfi",
+       "-i",
+       "testsrc2=duration=10:size=1280x720:rate=30",
+       "-c:v",
+       "libx264",
+       "-preset",
+       "medium",
+       "-f",
+       "null",
+       "-"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t19",
+  "source": "ffmpeg: Encodes 40 s of 720p test video to H.264, output discarded; duration= is the video length, not a run time.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "mwader/static-ffmpeg@sha256:a8090df5f5608daef387e1b2e93b98aaacb4d92153ad904e7d715c725724fca4",
+      "command": [
+       "/ffmpeg",
+       "-v",
+       "error",
+       "-f",
+       "lavfi",
+       "-i",
+       "testsrc2=duration=40:size=1280x720:rate=30",
+       "-c:v",
+       "libx264",
+       "-preset",
+       "medium",
+       "-f",
+       "null",
+       "-"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t20",
+  "source": "limit-stress: CPU stressor, 2000 operations, limit 250m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6",
+      "command": [
+       "stress-ng",
+       "--cpu",
+       "1",
+       "--cpu-ops",
+       "2000",
+       "--temp-path",
+       "/tmp",
+       "--metrics-brief"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "250m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "250m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t21",
+  "source": "limit-gzip: 128 MiB gzip, limit 250m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 134217728 /dev/urandom > /tmp/in && gzip -c /tmp/in > /tmp/in.gz"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "250m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "250m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t22",
+  "source": "limit-loop: Python loop 10000000, limit 250m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "python",
+       "-c",
+       "s = 0\nfor i in range(10000000):\n    s += i * i\nprint(s)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "250m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "250m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t23",
+  "source": "limit-stress: CPU stressor, 2000 operations, limit 1000m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "ghcr.io/colinianking/stress-ng@sha256:cf90385beccc3de5c04839ff86b378c133fa02ec5cf36c0573a5ab5be652edf6",
+      "command": [
+       "stress-ng",
+       "--cpu",
+       "1",
+       "--cpu-ops",
+       "2000",
+       "--temp-path",
+       "/tmp",
+       "--metrics-brief"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t24",
+  "source": "limit-gzip: 128 MiB gzip, limit 1000m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 134217728 /dev/urandom > /tmp/in && gzip -c /tmp/in > /tmp/in.gz"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t25",
+  "source": "limit-loop: Python loop 10000000, limit 1000m.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "python",
+       "-c",
+       "s = 0\nfor i in range(10000000):\n    s += i * i\nprint(s)"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "64Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "64Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t26",
+  "source": "pgbench: Creates a PostgreSQL database, loads it, runs 4000 transactions.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "command": [
+       "sh",
+       "-c",
+       "initdb -D /tmp/pg -U postgres > /dev/null && pg_ctl -D /tmp/pg -o \"-k /tmp -c listen_addresses=''\" -l /tmp/pg.log -w start > /dev/null && pgbench -h /tmp -U postgres -i -s 10 -q postgres && pgbench -h /tmp -U postgres -c 4 -j 2 -t 1000 postgres"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "512Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t27",
+  "source": "redis: Starts Redis and sends it 400000 requests over loopback.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499",
+      "command": [
+       "sh",
+       "-c",
+       "redis-server --daemonize yes --save '' > /dev/null && redis-benchmark -q -n 200000 -t set,get"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "1000m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "1000m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t28",
+  "source": "compileall: Byte-compiles the whole Python standard library to files.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "python@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1",
+      "command": [
+       "sh",
+       "-c",
+       "PYTHONPYCACHEPREFIX=/tmp/pyc python -m compileall -q -f /usr/local/lib/python3.12"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "256Mi"
+       }
+      },
+      "securityContext": {
+       "allowPrivilegeEscalation": false,
+       "capabilities": {
+        "drop": [
+         "ALL"
+        ]
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ {
+  "id": "t29",
+  "source": "sha256: Writes 512 MiB to a file, then hashes it.",
+  "pod": {
+   "apiVersion": "v1",
+   "kind": "Pod",
+   "spec": {
+    "restartPolicy": "Never",
+    "activeDeadlineSeconds": 3600,
+    "automountServiceAccountToken": false,
+    "securityContext": {
+     "runAsNonRoot": true,
+     "runAsUser": 65534,
+     "runAsGroup": 65534,
+     "seccompProfile": {
+      "type": "RuntimeDefault"
+     }
+    },
+    "containers": [
+     {
+      "name": "work",
+      "image": "busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662",
+      "command": [
+       "sh",
+       "-c",
+       "head -c 536870912 /dev/zero > /tmp/blob && sha256sum /tmp/blob"
+      ],
+      "resources": {
+       "requests": {
+        "cpu": "500m",
+        "memory": "768Mi"
+       },
+       "limits": {
+        "cpu": "500m",
+        "memory": "768Mi"
        }
       },
       "securityContext": {

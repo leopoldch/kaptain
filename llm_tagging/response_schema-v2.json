@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence",
+    "missing_information",
+    "work_types",
+    "duration_seconds"
+  ],
+  "properties": {
+    "evidence": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string"
+      }
+    },
+    "missing_information": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "string"
+      }
+    },
+    "work_types": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "enum": [
+          "cpu",
+          "memory",
+          "disk",
+          "network",
+          "wait",
+          "unknown"
+        ]
+      }
+    },
+    "duration_seconds": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  }
+}

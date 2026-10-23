@@ -15,14 +15,12 @@ class TaggingTests(unittest.TestCase):
         self.images = tag.load(tag.HERE / "images.json")
 
     def test_input_is_only_what_the_scheduler_has(self):
-        node = tag.load(tag.HERE / "node.json")
         for case in self.cases:
             for level in tag.LEVELS:
-                task = tag.model_input(case, level, self.images, node)
+                task = tag.model_input(case, level, self.images)
                 self.assertEqual(task["pod"], case["pod"])
                 self.assertNotIn("metadata", task["pod"])
                 self.assertEqual("images" in task, level != "pod")
-                self.assertEqual("node" in task, level == "pod_image_node")
                 text = json.dumps(task)
                 for leak in [case["id"], case["source"], self.refs[case["id"]]["why"], "kaptain", "_about"]:
                     self.assertNotIn(leak, text)

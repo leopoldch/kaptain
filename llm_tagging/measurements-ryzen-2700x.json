@@ -1,0 +1,470 @@
+{
+ "host": {
+  "cpu": "AMD Ryzen 7 2700X Eight-Core Processor",
+  "cores": 16,
+  "load_average_at_start": [
+   2.05078125,
+   1.63037109375,
+   2.02685546875
+  ],
+  "date": "2026-10-09 16:27:08 -0400"
+ },
+ "cases": {
+  "c01": [
+   {
+    "repeat": 1,
+    "seconds": 7.841,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 3.832623,
+    "memory_peak_bytes": 14143488,
+    "read_bytes": 10076160,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.70 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 7.741,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 3.848018,
+    "memory_peak_bytes": 5742592,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.63 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 7.663,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 3.750321,
+    "memory_peak_bytes": 6529024,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: cpu (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 7.55 secs"
+   }
+  ],
+  "c02": [
+   {
+    "repeat": 1,
+    "seconds": 67.182,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 33.503769,
+    "memory_peak_bytes": 153632768,
+    "read_bytes": 131072,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 7.07 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 67.43,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 33.710134,
+    "memory_peak_bytes": 153481216,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 7.31 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 67.107,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 33.488064,
+    "memory_peak_bytes": 153362432,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1 min 6.99 secs"
+   }
+  ],
+  "c03": [
+   {
+    "repeat": 1,
+    "seconds": 1.168,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.53892,
+    "memory_peak_bytes": 140681216,
+    "read_bytes": 20480,
+    "write_bytes": 536870912,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 1.05 sec"
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.878,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.525238,
+    "memory_peak_bytes": 140378112,
+    "read_bytes": 0,
+    "write_bytes": 666238976,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 2.77 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 1.088,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.449635,
+    "memory_peak_bytes": 140500992,
+    "read_bytes": 0,
+    "write_bytes": 536870912,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 1: hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 0 secs"
+   }
+  ],
+  "c04": [
+   {
+    "repeat": 1,
+    "seconds": 60.174,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.052533,
+    "memory_peak_bytes": 21045248,
+    "read_bytes": 6696960,
+    "write_bytes": 4096,
+    "last_output": "2026/10/09 20:29:25 [notice] 22#22: exit\n2026/10/09 20:29:25 [notice] 20#20: exit\n2026/10/09 20:29:25 [notice] 11#11: exit\n2026/10/09 20:29:25 [notice] 24#24: exit\n2026/10/09 20:29:25 [notice] 25#25: exit"
+   },
+   {
+    "repeat": 2,
+    "seconds": 60.147,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.046664,
+    "memory_peak_bytes": 15163392,
+    "read_bytes": 0,
+    "write_bytes": 4096,
+    "last_output": "2026/10/09 20:36:32 [notice] 20#20: exit\n2026/10/09 20:36:32 [notice] 22#22: exit\n2026/10/09 20:36:32 [notice] 16#16: exit\n2026/10/09 20:36:32 [notice] 24#24: exit\n2026/10/09 20:36:32 [notice] 18#18: gracefully shutting down"
+   },
+   {
+    "repeat": 3,
+    "seconds": 60.158,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.04618,
+    "memory_peak_bytes": 14307328,
+    "read_bytes": 0,
+    "write_bytes": 4096,
+    "last_output": "2026/10/09 20:43:37 [notice] 17#17: exiting\n2026/10/09 20:43:37 [notice] 21#21: exiting\n2026/10/09 20:43:37 [notice] 18#18: exit\n2026/10/09 20:43:37 [notice] 17#17: exit\n2026/10/09 20:43:37 [notice] 21#21: exit"
+   }
+  ],
+  "c05": [
+   {
+    "repeat": 1,
+    "seconds": 60.104,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.029832,
+    "memory_peak_bytes": 5718016,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 60.095,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.02672,
+    "memory_peak_bytes": 5218304,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 60.095,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.026718,
+    "memory_peak_bytes": 5971968,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   }
+  ],
+  "c06": [
+   {
+    "repeat": 1,
+    "seconds": 2.1,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.02746,
+    "memory_peak_bytes": 6500352,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 2.098,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.027014,
+    "memory_peak_bytes": 5410816,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 2.096,
+    "class": "short",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.027047,
+    "memory_peak_bytes": 5730304,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   }
+  ],
+  "c07": [
+   {
+    "repeat": 1,
+    "seconds": 20.095,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.027458,
+    "memory_peak_bytes": 5427200,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 20.094,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.02679,
+    "memory_peak_bytes": 5451776,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 20.092,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.02686,
+    "memory_peak_bytes": 6004736,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   }
+  ],
+  "c08": [
+   {
+    "repeat": 1,
+    "seconds": 90.099,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.027525,
+    "memory_peak_bytes": 6283264,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 90.097,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.026499,
+    "memory_peak_bytes": 5894144,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 90.095,
+    "class": "long",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.027424,
+    "memory_peak_bytes": 5697536,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": ""
+   }
+  ],
+  "c09": [
+   {
+    "repeat": 1,
+    "seconds": 20.28,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.065646,
+    "memory_peak_bytes": 139456512,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.17 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 20.234,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.070066,
+    "memory_peak_bytes": 138723328,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.12 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 20.299,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.074344,
+    "memory_peak_bytes": 138956800,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) vm (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.19 secs"
+   }
+  ],
+  "c10": [
+   {
+    "repeat": 1,
+    "seconds": 20.163,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.063394,
+    "memory_peak_bytes": 142680064,
+    "read_bytes": 20480,
+    "write_bytes": 3859087360,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.04 secs"
+   },
+   {
+    "repeat": 2,
+    "seconds": 20.158,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.061117,
+    "memory_peak_bytes": 142635008,
+    "read_bytes": 0,
+    "write_bytes": 6174015488,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.04 secs"
+   },
+   {
+    "repeat": 3,
+    "seconds": 20.177,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 10.075227,
+    "memory_peak_bytes": 142561280,
+    "read_bytes": 36864,
+    "write_bytes": 6039797760,
+    "last_output": "stress-ng: info:  [1] skipped: 0\nstress-ng: info:  [1] passed: 2: cpu (1) hdd (1)\nstress-ng: info:  [1] failed: 0\nstress-ng: info:  [1] metrics untrustworthy: 0\nstress-ng: info:  [1] successful run completed in 20.06 secs"
+   }
+  ],
+  "c11": [
+   {
+    "repeat": 1,
+    "seconds": 20.151,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.059857,
+    "memory_peak_bytes": 17399808,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "2026/10/09 20:33:19 [notice] 25#25: gracefully shutting down\n2026/10/09 20:33:19 [notice] 24#24: exiting\n2026/10/09 20:33:19 [notice] 25#25: exiting\n2026/10/09 20:33:19 [notice] 16#16: gracefully shutting down\n2026/10/09 20:33:19 [notice] 16#16: exiting"
+   },
+   {
+    "repeat": 2,
+    "seconds": 20.154,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.059383,
+    "memory_peak_bytes": 16424960,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "2026/10/09 20:40:27 [notice] 17#17: exiting\n2026/10/09 20:40:27 [notice] 16#16: exiting\n2026/10/09 20:40:27 [notice] 17#17: exit\n2026/10/09 20:40:27 [notice] 16#16: exit\n2026/10/09 20:40:27 [notice] 13#13: exit"
+   },
+   {
+    "repeat": 3,
+    "seconds": 20.142,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 0.060674,
+    "memory_peak_bytes": 16961536,
+    "read_bytes": 0,
+    "write_bytes": 0,
+    "last_output": "2026/10/09 20:47:31 [notice] 10#10: exit\n2026/10/09 20:47:31 [notice] 14#14: exit\n2026/10/09 20:47:31 [notice] 9#9: exit\n2026/10/09 20:47:31 [notice] 16#16: gracefully shutting down\n2026/10/09 20:47:31 [notice] 16#16: exiting"
+   }
+  ],
+  "c12": [
+   {
+    "repeat": 1,
+    "seconds": 53.529,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 15.582328,
+    "memory_peak_bytes": 67108864,
+    "read_bytes": 267259904,
+    "write_bytes": 527851520,
+    "last_output": ""
+   },
+   {
+    "repeat": 2,
+    "seconds": 52.634,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 15.584383,
+    "memory_peak_bytes": 67108864,
+    "read_bytes": 268439552,
+    "write_bytes": 523501568,
+    "last_output": ""
+   },
+   {
+    "repeat": 3,
+    "seconds": 52.571,
+    "class": "medium",
+    "exit_code": 0,
+    "oom_killed": false,
+    "cpu_seconds": 15.437558,
+    "memory_peak_bytes": 67108864,
+    "read_bytes": 266862592,
+    "write_bytes": 520142848,
+    "last_output": ""
+   }
+  ]
+ }
+}
