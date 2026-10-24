@@ -1,0 +1,29 @@
+# The decider lists pods, nothing else: the kaptain strategies learn runtimes from the
+# experiment pods and count the unfinished ones (bridge/strategies/kaptain.py).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kaptain-decider
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kaptain-decider-list-pods
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kaptain-decider-list-pods
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kaptain-decider-list-pods
+subjects:
+  - kind: ServiceAccount
+    name: kaptain-decider
+    namespace: kube-system

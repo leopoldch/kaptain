@@ -69,6 +69,7 @@ load-decider:
 	kind load docker-image $(DECIDER_IMAGE) --name $(CLUSTER)
 
 deploy-decider:
+	kubectl apply -f k8s/decider-rbac.yaml
 	kubectl apply -f k8s/decider.yaml
 
 logs-decider:
@@ -102,7 +103,7 @@ check: lint-manifests
 	# This is the cheapest thing that catches it without a cluster and without a suite.
 	cd bridge && uv run --frozen python -c "import app; \
 	  from strategies import get_strategy; \
-	  [get_strategy(n) for n in ('dummy-random','largest-cpu-capacity','least-allocated','least-used')]"
+	  [get_strategy(n) for n in ('dummy-random','largest-cpu-capacity','least-allocated','least-used','shortest-estimate','kaptain','kaptain-b0.5-l1')]"
 
 fmt-plugin:
 	cd plugin && gofmt -w .

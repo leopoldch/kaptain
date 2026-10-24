@@ -4,9 +4,16 @@ set -euo pipefail
 
 strategy=${1:-}
 case "$strategy" in
-  dummy-random|largest-cpu-capacity|least-allocated|least-used) ;;
-  *) echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2 ;;
+  dummy-random|largest-cpu-capacity|least-allocated|least-used|shortest-estimate) ;;
+  *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm)?)?$ ]] ||
+       { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
+if [[ $strategy != *-llm ]]; then
+  unset OPENAI_API_KEY  # only the -llm strategies get the key
+elif [[ -z ${OPENAI_API_KEY:-} ]]; then
+  echo "$strategy needs OPENAI_API_KEY (the repository secret, in GitHub Actions)." >&2
+  exit 2
+fi
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 commit=$(git rev-parse HEAD)
@@ -16,12 +23,19 @@ if [[ -n $(git status --porcelain -- bridge/) ]]; then
 fi
 container=kaptain-k3s
 run_id="deploy-${GITHUB_RUN_ID:-$(date -u +%s)}-${GITHUB_RUN_ATTEMPT:-1}"
-image="kaptain-decider:$commit-$run_id"
+# One tag per deployment, not per workflow run: a campaign deploys many times in one run, and
+# a decider whose spec did not change is not restarted, so Kaptain would keep what it learned.
+image="kaptain-decider:$commit-$run_id-$(date -u +%Y%m%dt%H%M%Sz)"
 changing=0
 recovery='Not needed'
 
 k() {
   docker exec "$container" kubectl --server=https://10.50.0.1:6443 \
+    --request-timeout=20s -n kube-system "$@"
+}
+# The same, reading stdin: kubectl runs in the K3s container, which sees no file of this checkout.
+ki() {
+  docker exec -i "$container" kubectl --server=https://10.50.0.1:6443 \
     --request-timeout=20s -n kube-system "$@"
 }
 ready() {
@@ -111,13 +125,30 @@ echo "Previous revisions: decider=$decider_revision scheduler=$scheduler_revisio
 # Build and check the image, then import it into K3s.
 docker build --label "org.opencontainers.image.revision=$commit" --label kaptain.io/component=decider \
   -t "$image" bridge/
-docker run --rm --network none -e "STRATEGY=$strategy" "$image" \
+docker run --rm --network none -e "STRATEGY=$strategy" -e OPENAI_API_KEY "$image" \
   uv run --no-sync python -c 'import app; print(app.healthz())'
 docker save "$image" | docker exec -i "$container" ctr images import -
 
 # Pause scheduling while the two components switch policies.
 changing=1
 stop_scheduler
+# Kaptain counts the experiment pods: the decider may list pods, nothing else.
+ki apply -f - < k8s/decider-rbac.yaml
+k patch deployment kaptain-decider --type merge \
+  -p '{"spec":{"template":{"spec":{"serviceAccountName":"kaptain-decider","automountServiceAccountToken":true}}}}'
+if [[ -n ${OPENAI_API_KEY:-} ]]; then
+  # Through stdin, never on a command line. Only the -llm strategies read it.
+  printf %s "$OPENAI_API_KEY" |
+    ki create secret generic kaptain-openai --from-file=OPENAI_API_KEY=/dev/stdin --dry-run=client -o yaml |
+    ki apply -f -
+  k set env deployment/kaptain-decider --from=secret/kaptain-openai
+else
+  # A previous -llm deployment left the key on the decider.
+  if [[ -n $(k get deployment kaptain-decider \
+      -o 'jsonpath={.spec.template.spec.containers[?(@.name=="decider")].env[?(@.name=="OPENAI_API_KEY")].name}') ]]; then
+    k set env deployment/kaptain-decider OPENAI_API_KEY-
+  fi
+fi
 k set image deployment/kaptain-decider decider="$image"
 k set env deployment/kaptain-decider STRATEGY="$strategy"
 ready kaptain-decider
