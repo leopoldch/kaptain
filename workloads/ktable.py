@@ -33,8 +33,11 @@ def cpu_seconds(folder):
 
 
 def metrics(folder, meta):
+    """None when no pod succeeded: kexp calls a run complete once its pods finished, failed or not."""
     pods = json.loads((folder / "pods.json").read_text())["items"]
     succeeded = [pod_times(pod) for pod in pods if pod["status"]["phase"] == "Succeeded"]
+    if not succeeded:
+        return None
     delays = [row["completion"] for row in succeeded]
     return dict(zip(METRICS, [statistics.fmean(delays), p95(delays), makespan(succeeded, meta["pods"]),
                               cpu_seconds(folder)]))
@@ -86,8 +89,12 @@ def tables(paths, reference):
         if meta["status"] != "complete":
             skipped.append(f"{folder.name} ({meta['status']})")
             continue
+        values = metrics(folder, meta)
+        if values is None:
+            skipped.append(f"{folder.name} (no pod succeeded)")
+            continue
         phase_runs = training if meta.get("phase") == "train" else runs  # training runs are not results
-        phase_runs[(meta["experiment"], meta["strategy"])][meta.get("seed")] = metrics(folder, meta)
+        phase_runs[(meta["experiment"], meta["strategy"])][meta.get("seed")] = values
 
     lines = []
     for experiment in sorted({e for e, _ in runs} | {e for e, _ in training}):
@@ -108,7 +115,7 @@ def tables(paths, reference):
         lines.append("")
         lines += learning(experiment, training)
     if skipped:
-        lines += ["Left out, not complete: " + ", ".join(skipped) + ".", ""]
+        lines += ["Left out: " + ", ".join(skipped) + ".", ""]
     return "\n".join(lines)
 
 
