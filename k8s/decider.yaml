@@ -47,7 +47,7 @@ spec:
           env:
             # MUST match KAPTAIN_STRATEGY in scheduler-plugin.yaml: the plugin refuses to
             # start, and refuses the decision, if the two disagree.
-            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used | shortest-estimate | kaptain[-b<beta>][-l<lambda>][-llm]
+            - name: STRATEGY            # dummy-random | largest-cpu-capacity | least-allocated | least-used | shortest-estimate | kaptain[-b<beta>][-l<lambda>[-llm]]
               value: "dummy-random"
           ports:
             - containerPort: 8888

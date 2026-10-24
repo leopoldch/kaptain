@@ -12,5 +12,5 @@ def get_strategy(name: str) -> SchedulingStrategy:
     if VARIANT.fullmatch(name):  # kaptain, kaptain-b0.5, kaptain-l1-llm, ...: its weights are in the name
         return Kaptain(name)
     if name not in _REGISTRY:
-        raise ValueError(f"unknown strategy {name!r}, known: {sorted(_REGISTRY)} and kaptain[-b<beta>][-l<lambda>][-llm]")
+        raise ValueError(f"unknown strategy {name!r}, known: {sorted(_REGISTRY)} and kaptain[-b<beta>][-l<lambda>[-llm]]")
     return _REGISTRY[name]()

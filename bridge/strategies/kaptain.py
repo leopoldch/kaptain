@@ -38,7 +38,7 @@ MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
-VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?))?(-llm)?")
+VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm)?)?")  # -llm only with a lambda: it gives the Phi of the bonus
 PHASE = "kaptain.io/phase"
 MAX_WAITING = 100  # decisions whose update waits for the LLM; older ones are dropped
 PROMPT = """You judge a Kubernetes cluster that runs batch tasks. From its state, score from 0 to
@@ -201,6 +201,8 @@ class Kaptain(SchedulingStrategy):
         self.name = name
         self.beta = float(weights[1] or 0)  # weight of the CPU-seconds
         self.lam = float(weights[2] or 0)  # weight of the Phi bonus
+        if weights[3] and not self.lam:
+            raise ValueError(f"{name}: -llm scores the bonus, which lambda = 0 turns off")
         self.llm = LLM() if weights[3] else None
         torch.manual_seed(seed)
         torch.set_num_threads(1)  # the master is a shared 4 vCPU VPS
