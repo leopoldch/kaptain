@@ -8,7 +8,9 @@ case "$strategy" in
   *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?)?(-llm)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
-if [[ $strategy == *-llm && -z ${OPENAI_API_KEY:-} ]]; then
+if [[ $strategy != *-llm ]]; then
+  unset OPENAI_API_KEY  # only the -llm strategies get the key
+elif [[ -z ${OPENAI_API_KEY:-} ]]; then
   echo "$strategy needs OPENAI_API_KEY (the repository secret, in GitHub Actions)." >&2
   exit 2
 fi
@@ -140,6 +142,12 @@ if [[ -n ${OPENAI_API_KEY:-} ]]; then
     ki create secret generic kaptain-openai --from-file=OPENAI_API_KEY=/dev/stdin --dry-run=client -o yaml |
     ki apply -f -
   k set env deployment/kaptain-decider --from=secret/kaptain-openai
+else
+  # A previous -llm deployment left the key on the decider.
+  if [[ -n $(k get deployment kaptain-decider \
+      -o 'jsonpath={.spec.template.spec.containers[?(@.name=="decider")].env[?(@.name=="OPENAI_API_KEY")].name}') ]]; then
+    k set env deployment/kaptain-decider OPENAI_API_KEY-
+  fi
 fi
 k set image deployment/kaptain-decider decider="$image"
 k set env deployment/kaptain-decider STRATEGY="$strategy"
