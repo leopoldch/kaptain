@@ -21,7 +21,9 @@ if [[ -n $(git status --porcelain -- bridge/) ]]; then
 fi
 container=kaptain-k3s
 run_id="deploy-${GITHUB_RUN_ID:-$(date -u +%s)}-${GITHUB_RUN_ATTEMPT:-1}"
-image="kaptain-decider:$commit-$run_id"
+# One tag per deployment, not per workflow run: a campaign deploys many times in one run, and
+# a decider whose spec did not change is not restarted, so Kaptain would keep what it learned.
+image="kaptain-decider:$commit-$run_id-$(date -u +%Y%m%dt%H%M%Sz)"
 changing=0
 recovery='Not needed'
 
