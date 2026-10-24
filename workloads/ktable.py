@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """One table per experiment: each policy's mean over its seeds, with a 95% interval, and its
-change against a reference policy, paired by seed. Reads run folders as kexp.py writes them.
+change against a reference policy, paired by seed. Then the mean delay of each training run, in
+order, to see how fast each policy learns. Reads run folders as kexp.py writes them.
 
     python3 ktable.py runs/ --reference least-allocated"""
 import argparse
@@ -61,20 +62,35 @@ def change(value, reference):
     return None if value is None or not reference else 100 * (value / reference - 1)
 
 
+def learning(experiment, training):
+    """Mean delay of each training run, by seed in the order they ran: whether a bonus makes it fall faster."""
+    curves = {strategy: seeds for (e, strategy), seeds in sorted(training.items()) if e == experiment}
+    if not curves:
+        return []
+    order = sorted({seed for seeds in curves.values() for seed in seeds})
+    lines = ["Training runs, by seed in the order they ran: mean delay (s), not a result.", "",
+             "| Policy | " + " | ".join(str(seed) for seed in order) + " |",
+             "|---|" + "---:|" * len(order)]
+    for strategy, seeds in curves.items():
+        delays = [f"{seeds[s]['mean delay (s)']:.0f}" if s in seeds else "–" for s in order]
+        lines.append(f"| `{strategy}` | " + " | ".join(delays) + " |")
+    return lines + [""]
+
+
 def tables(paths, reference):
     runs = defaultdict(dict)  # (experiment, strategy) -> seed -> metrics
+    training = defaultdict(dict)  # the same, for the training runs
     skipped = []
     for meta_path in sorted(p for path in paths for p in path.rglob("meta.json")):
         folder, meta = meta_path.parent, json.loads(meta_path.read_text())
-        if meta.get("phase") == "train":  # training runs are not results
-            continue
         if meta["status"] != "complete":
             skipped.append(f"{folder.name} ({meta['status']})")
             continue
-        runs[(meta["experiment"], meta["strategy"])][meta.get("seed")] = metrics(folder, meta)
+        phase_runs = training if meta.get("phase") == "train" else runs  # training runs are not results
+        phase_runs[(meta["experiment"], meta["strategy"])][meta.get("seed")] = metrics(folder, meta)
 
     lines = []
-    for experiment in sorted({e for e, _ in runs}):
+    for experiment in sorted({e for e, _ in runs} | {e for e, _ in training}):
         base = runs.get((experiment, reference), {})
         lines += [f"## `{experiment}`", "",
                   "Mean over seeds ± 95% interval; change against "
@@ -90,6 +106,7 @@ def tables(paths, reference):
                     cell([change(seeds[s][m], base[s][m]) for s in shared], percent=True) for m in METRICS[:3]]
             lines.append(f"| `{strategy}` | {len(seeds)} | " + " | ".join(row) + " |")
         lines.append("")
+        lines += learning(experiment, training)
     if skipped:
         lines += ["Left out, not complete: " + ", ".join(skipped) + ".", ""]
     return "\n".join(lines)
