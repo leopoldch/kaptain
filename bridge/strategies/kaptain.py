@@ -37,7 +37,6 @@ SIGMA2 = 0.1  # noise of one log-runtime, about 30%
 MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
-NEW_EPISODE_S = 300  # a longer gap between two decisions: the run ended, the next one starts afresh
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
 VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?))?(-llm)?")
 PHASE = "kaptain.io/phase"
@@ -262,6 +261,7 @@ class Kaptain(SchedulingStrategy):
                 state = {"rows": torch.tensor([self.node_vector(n, pod, labels.get(WORKLOAD), now)
                                                for n in snapshot["nodes"]]),
                          "unfinished": self.cluster.unfinished, "area": self.cluster.area, "time": now,
+                         "namespace": pod["namespace"],
                          "cpu_used": sum(n["used_millicpu"] for n in snapshot["nodes"]) / 1000, "phi": 0.0}
                 if self.lam and not frozen:
                     state["phi"] = (self.llm.phi(self.describe(snapshot, now)) if self.llm
@@ -293,7 +293,7 @@ class Kaptain(SchedulingStrategy):
         """One A2C step on one decision: advantage = r + gamma V(s') - V(s)."""
         torch = self.torch
         elapsed = state["time"] - last["time"]
-        done = elapsed > NEW_EPISODE_S
+        done = state["namespace"] != last["namespace"]  # kexp gives every run its own namespace
         delay = state["area"] - last["area"]
         cpu = (last["cpu_used"] + state["cpu_used"]) / 2 * elapsed
         phi, following_phi = value(last["phi"]), 0.0 if done else value(state["phi"])  # Phi is zero once the run is over
