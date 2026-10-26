@@ -22,6 +22,11 @@ policy to deploy first. The report lands in the run summary, the raw files in th
 `KEXP_SEED=8 python3 kexp.py run drs-even` replaces the file's seed by hand, and
 `python3 ktable.py runs/` sums up downloaded runs: per experiment and policy, the mean over
 seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.
+A policy trained several times (`KEXP_REPLICATE`, the decider's `KAPTAIN_SEED`) gets one value
+per training, its mean over the seeds, and the interval is over the trainings.
+`KEXP_SCHEDULER=default-scheduler` leaves the pods to Kubernetes' own scheduler, and
+`KEXP_PIN=<node>` to it on that node only, to measure each task on each node (`calibration`);
+the run's policy is then `default-scheduler` or `pin-<node>`.
 
 ## Experiment file
 
@@ -53,12 +58,18 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 | `packing-random` | Christensen et al. 2025: pods with random CPU and RAM | ranges and Poisson rate are ours |
 | `decision-cost` | Zhou et al. 2026: no-op pods | shape of the September pilot |
 | `web` | Zhou et al. 2026: NGINX services | 60 s lifetime, Poisson rate are ours |
+| `even-10s`, `even-5s` | `drs-even`, one pod every 10 or 5 s: contention matters | the faster arrivals are ours |
+| `calibration` | each task alone, 5 of each, 240 s apart, 500m: with `KEXP_PIN`, one node at a time | ours |
 | `smoke` | pipeline check only | — |
+| `smoke-stress` | pipeline check of the stress-ng pods, their logs included | — |
 
 ## Output
 
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
+`pod-logs.txt` (every pod's log, each line prefixed with its pod), `decider.jsonl` (the decider's JSON lines since
+the run started: Kaptain's probabilities per decision, rewards, LLM scores; the last update of a run is learned at the
+next run's first decision, a `kaptain_step` line naming the namespace it belongs to),
 `telemetry.csv` (kubelet CPU and memory working set per node every 5 s, later when a busy kubelet is slow to answer;
 each with the kubelet's own timestamp), `network.csv` (from the same answers: cumulative bytes received and sent, for every
 interface, since the one carrying the cluster's traffic differs between nodes), `meta.json` (with each node's allocatable
@@ -75,7 +86,9 @@ The report gives:
 | Placement wait (median, p95, max) | pod first seen → first seen with a node, in the API watch stream, both timed by the runner on the master, ms |
 | Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
 | CPU and memory utilization per node (samples, mean, peak) | kubelet CPU usage and memory working set / allocatable, refreshed by the kubelet every 10–15 s; memory `missing` for runs before 2026-10-09 |
+| Task CPU (mean per pod, total) | each stress-ng pod's own usr + sys CPU-seconds, from its `--metrics-brief` line: the pod's work, whatever else its node runs |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |
+| Load imbalance over time | the same std. dev. at each instant, every 5 s, averaged over the run: DRS's Imbalance_t, CPU only (`imbalance.png` draws it) |
 
 API server and kubelet timestamps have 1 s resolution and come from different machines'
 clocks. Images are pulled on first use, so the first pod of a type on a node also pays the

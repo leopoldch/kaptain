@@ -6,15 +6,17 @@ Open **Actions -> select a workflow -> Run workflow** on the default branch.
 - **Deploy policy** deploys the selected Python policy on the master.
 - **Run experiment** runs one experiment from `workloads/experiments/`, optionally after
   deploying a policy, and publishes its report and raw files.
-- **Run campaign** runs every experiment × policy × seed listed. Default: `drs-even`; Kaptain
-  with beta in {0, 0.5, 2} and lambda in {0, 1, 4}, one at a time, the hand-written Phi or the
-  LLM's (`-llm`, which uses the `OPENAI_API_KEY` secret); shortest-estimate and least-allocated;
-  seeds 7 to 11. Each policy is deployed afresh for each experiment. The policies that learn
-  (Kaptain, shortest-estimate) first train on `train_runs` other seeds (1000, 1001, ...), then
-  every policy runs the evaluated seeds, Kaptain frozen: 8 × 10 + 5 = 85 runs. The summary has
-  one report per run, then a table per experiment of the evaluated runs
-  (`workloads/ktable.py`): mean ± 95% interval per policy, and the change against
-  least-allocated paired by seed. A run that fails does not stop the others.
+- **Run campaign** runs every experiment × policy × seed listed. Default: `even-5s` and
+  `even-10s`; Kaptain (delay only), earliest-finish, shortest-estimate, least-allocated and
+  Kubernetes' own `default-scheduler`; seeds 7 to 11. Each policy is deployed afresh for each
+  experiment. The policies that learn (Kaptain, shortest-estimate, earliest-finish) first train
+  on `train_runs` other seeds (1000, 1001, ...), then every policy runs the evaluated seeds,
+  Kaptain frozen. Each Kaptain policy does it `replicates` times, independent trainings
+  (`KAPTAIN_SEED` 1, 2, ...). `pin-<node>` runs Kubernetes on that node only, to measure each
+  task on each node (`calibration`). The summary has one report per run, then a table per
+  experiment of the evaluated runs (`workloads/ktable.py`): mean ± 95% interval per policy
+  (over the trainings when there are several), and the change against least-allocated paired
+  by seed. A run that fails does not stop the others.
 
 Stop active Kaptain workloads before deploying. Results are shown in the
 Action summary and logs.
