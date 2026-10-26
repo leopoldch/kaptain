@@ -7,7 +7,6 @@
 
 Reads the run folders as kexp.py writes them, locally: the runner itself needs no matplotlib."""
 import argparse
-import bisect
 import csv
 import json
 import statistics
@@ -19,7 +18,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from kexp import makespan, placement_waits, pod_times, read_decisions, seconds
+from kexp import imbalance_series, makespan, placement_waits, pod_times, read_decisions, seconds, usage_series
 
 # Fixed slots, so these strategies keep their colour whatever runs are plotted together;
 # any other takes the next free slot, in the order the runs are sorted.
@@ -27,7 +26,6 @@ PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6
 STRATEGIES = ["dummy-random", "largest-cpu-capacity", "least-allocated", "least-used"]
 LINESTYLES = ["-", "--", ":", "-."]  # repeated runs of one strategy share its colour
 INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e3df"
-IMBALANCE_STEP_S = 5
 
 
 def style():
@@ -77,39 +75,6 @@ def read_run(folder):
             "cpu": usage_series(telemetry, meta["node_cores"], start, "cpu_cores", "kubelet_time"),
             # Runs before memory was sampled have neither the column nor the allocatable memory.
             "memory": usage_series(telemetry, meta.get("node_memory_bytes", {}), start, "memory_bytes", "memory_time")}
-
-
-def usage_series(telemetry, allocatable, start, column, time_column):
-    """% of allocatable per node, at the kubelet's own time, each reading once.
-
-    The sampler asks every 5 s but the kubelet refreshes every 10-15 s: between two
-    refreshes it returns the same reading, which would draw as a flat step."""
-    series = {node: {} for node in allocatable}
-    for row in telemetry:
-        if row["node"] in series and row.get(column):
-            at = seconds(row[time_column]) - start
-            series[row["node"]][at] = 100 * float(row[column]) / allocatable[row["node"]]
-    return {node: sorted(points.items()) for node, points in series.items()}
-
-
-def imbalance_series(cpu, left_out):
-    """Std. dev. of CPU % across nodes at each instant, as DRS's Imbalance_t but CPU only.
-
-    Each node holds its last reading until the next. Only where every node has one: from
-    the latest first reading to the earliest last one."""
-    series = {node: points for node, points in cpu.items() if points and node not in left_out}
-    if len(series) < 2:
-        return []
-    times = {node: [t for t, _ in points] for node, points in series.items()}
-    first = max(t[0] for t in times.values())
-    last = min(t[-1] for t in times.values())
-    imbalance = []
-    t = first
-    while t <= last:
-        values = [series[node][bisect.bisect_right(times[node], t) - 1][1] for node in series]
-        imbalance.append((t, statistics.pstdev(values)))
-        t += IMBALANCE_STEP_S
-    return imbalance
 
 
 def label(runs):

@@ -1,0 +1,18 @@
+name = "calibration"
+description = "Each task alone, 5 of each kind, one pod every 240 s, 500m: run pinned to one node"
+source = "none (each task measured on each node, with KEXP_PIN)"
+seed = 7
+count = 15
+timeout_s = 5400
+
+[arrival]
+process = "fixed"
+interval_s = 240
+
+[mix]
+cpu = 1
+memory = 1
+disk = 1
+
+[resources]
+cpu_millis = [500, 500]

@@ -1,0 +1,18 @@
+name = "even-5s"
+description = "drs-even, one pod every 5 s: more pods at once, contention matters"
+source = "Jian et al. 2024 (DRS), section 5.2, Even workload; the faster arrivals are ours"
+seed = 7
+count = 60
+timeout_s = 3600
+
+[arrival]
+process = "fixed"
+interval_s = 5
+
+[mix]
+cpu = 1
+memory = 1
+disk = 1
+
+[resources]
+cpu_millis = [200, 500]
