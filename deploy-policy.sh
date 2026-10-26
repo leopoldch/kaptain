@@ -4,7 +4,7 @@ set -euo pipefail
 
 strategy=${1:-}
 case "$strategy" in
-  dummy-random|largest-cpu-capacity|least-allocated|least-used|shortest-estimate) ;;
+  dummy-random|earliest-finish|largest-cpu-capacity|least-allocated|least-used|shortest-estimate) ;;
   *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm)?)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
@@ -89,7 +89,7 @@ finish() {
   {
     echo "### Deployment: $status"
     echo
-    echo "- Policy: $strategy"
+    echo "- Policy: $strategy (KAPTAIN_SEED=${KAPTAIN_SEED:-7})"
     echo "- Commit: $commit"
     echo "- Image: $image"
     echo "- Rollback: $recovery"
@@ -150,7 +150,8 @@ else
   fi
 fi
 k set image deployment/kaptain-decider decider="$image"
-k set env deployment/kaptain-decider STRATEGY="$strategy"
+# KAPTAIN_SEED: one independent training of a learning policy per value; the others ignore it.
+k set env deployment/kaptain-decider STRATEGY="$strategy" KAPTAIN_SEED="${KAPTAIN_SEED:-7}"
 ready kaptain-decider
 k set env deployment/kaptain-scheduler \
   KAPTAIN_STRATEGY="$strategy" POLICY_VERSION="$commit" RUN_ID="$run_id"

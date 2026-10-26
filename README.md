@@ -118,8 +118,10 @@ features (any node count), and online A2C on the delay reward. The weights are i
 (Phi = minus the predicted time left); `kaptain` is delay only. `-llm` takes Phi from an LLM
 instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` (`KEXP_PHASE=eval`) freeze
 the policy: best node, no update. `shortest-estimate` is the paper's simple
-rule on the same estimates. Estimates and weights live in the decider's memory: a
-redeployment starts from scratch.
+rule on the same estimates; `earliest-finish` adds the work left on each node, shared over its
+cores: the load-aware rule Kaptain must beat when contention matters. Estimates and weights live
+in the decider's memory: a redeployment starts from scratch. `KAPTAIN_SEED` (default 7) seeds
+Kaptain's networks and sampling, for independent trainings of one policy.
 
 ```bash
 # edit STRATEGY in k8s/decider.yaml and KAPTAIN_STRATEGY in k8s/scheduler-plugin.yaml to match
