@@ -10,11 +10,13 @@
 #    kaptain.io/phase=eval freezes it: it picks its best node and learns nothing (the estimates
 #    still do).
 # 3. Reward between two decisions: -(C + beta E) / 100 + lam (gamma Phi(s') - Phi(s)), where C
-#    is unfinished pods x seconds and E the CPU-seconds used. Phi is minus the predicted time
+#    is unfinished pods x seconds and E the CPU-seconds used while a pod is unfinished: the idle
+#    cluster between two runs is not the policy's doing. Phi is minus the predicted time
 #    left of the running pods, per 100, or with -llm a score an LLM gives the cluster state, in
 #    the background: the decision never waits, its update waits for the score. The weights are
 #    in the name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain (both zero).
 # Estimates and weights live in the decider's memory: a redeployment starts from scratch.
+# KAPTAIN_SEED seeds the networks and the sampling: independent trainings of one policy.
 
 import json
 import logging
@@ -78,12 +80,14 @@ class Estimates:
 
 
 class Cluster:
-    """Every 2 s, lists the experiment pods: counts the unfinished ones (area += count x seconds),
-    keeps the running ones, and feeds the runtime of each finished one to the estimates."""
+    """Every 2 s, lists the experiment pods: counts the unfinished ones (area += count x seconds,
+    busy += seconds while any), keeps the running ones, and feeds the runtime of each finished
+    one to the estimates."""
 
     def __init__(self):
         self.estimates = Estimates()
         self.area = 0.0
+        self.busy = 0.0
         self.unfinished = 0
         self.running = []  # (task, node, started)
         self.seen = set()
@@ -104,6 +108,8 @@ class Cluster:
                 if pods is not None:
                     self.read(pods)
                 self.area += self.unfinished * (now - last)
+                if self.unfinished:
+                    self.busy += now - last
             last = now
 
     def poll(self):
@@ -151,6 +157,31 @@ class ShortestEstimate(SchedulingStrategy):
             known = {n["name"]: self.cluster.estimates.get(task, n["name"]) for n in snapshot["nodes"]}
         # A node where the task never ran is tried first, otherwise a copied estimate is never checked.
         return {name: -math.exp(e[0]) if e and e[2] else 0.0 for name, e in known.items()}
+
+
+class EarliestFinish(SchedulingStrategy):
+    """Shortest estimate, seeing the load: the pod's estimated runtime plus the work left on the
+    node shared over its cores. The baseline Kaptain must beat when contention matters."""
+
+    name = "earliest-finish"
+
+    def __init__(self):
+        self.cluster = None
+
+    def scores(self, snapshot: dict) -> dict[str, float]:
+        if self.cluster is None:
+            self.cluster = Cluster()
+        task, now = (snapshot["pod"].get("labels") or {}).get(WORKLOAD), time.time()
+        scores = {}
+        with self.cluster.lock:
+            for n in snapshot["nodes"]:
+                estimate = self.cluster.estimates.get(task, n["name"])
+                if not (estimate and estimate[2]):
+                    scores[n["name"]] = 0.0  # never run there: tried first, as by shortest-estimate
+                    continue
+                queue = self.cluster.time_left(n["name"], now) / (n["allocatable_millicpu"] / 1000)
+                scores[n["name"]] = -(math.exp(estimate[0]) + queue)
+        return scores
 
 
 class LLM:
@@ -204,7 +235,8 @@ class Kaptain(SchedulingStrategy):
         if weights[3] and not self.lam:
             raise ValueError(f"{name}: -llm scores the bonus, which lambda = 0 turns off")
         self.llm = LLM() if weights[3] else None
-        torch.manual_seed(seed)
+        self.seed = int(os.environ.get("KAPTAIN_SEED") or seed)
+        torch.manual_seed(self.seed)
         torch.set_num_threads(1)  # the master is a shared 4 vCPU VPS
         self.torch, self.gamma, self.entropy = torch, gamma, entropy
         self.embed = nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
@@ -263,7 +295,7 @@ class Kaptain(SchedulingStrategy):
                 state = {"rows": torch.tensor([self.node_vector(n, pod, labels.get(WORKLOAD), now)
                                                for n in snapshot["nodes"]]),
                          "unfinished": self.cluster.unfinished, "area": self.cluster.area, "time": now,
-                         "namespace": pod["namespace"],
+                         "busy": self.cluster.busy, "namespace": pod["namespace"],
                          "cpu_used": sum(n["used_millicpu"] for n in snapshot["nodes"]) / 1000, "phi": 0.0}
                 if self.lam and not frozen:
                     state["phi"] = (self.llm.phi(self.describe(snapshot, now)) if self.llm
@@ -281,6 +313,12 @@ class Kaptain(SchedulingStrategy):
             action = int(logits.argmax()) if frozen else int(torch.distributions.Categorical(logits=logits).sample())
             state["action"] = action
             chosen = snapshot["nodes"][action]["name"]
+            # What the policy thought of every node, also when frozen: an argmax hides how close the others were.
+            probabilities = torch.softmax(logits, 0).tolist()
+            log.info(json.dumps({"event": "kaptain_decision", "strategy": self.name, "seed": self.seed,
+                                 "namespace": pod["namespace"], "pod": pod.get("name"), "frozen": frozen,
+                                 "chosen": chosen, "probabilities": {n["name"]: round(p, 4) for n, p in
+                                                                     zip(snapshot["nodes"], probabilities)}}))
         return {n["name"]: 1.0 if n["name"] == chosen else 0.0 for n in snapshot["nodes"]}
 
     def learn_ready(self):
@@ -297,7 +335,8 @@ class Kaptain(SchedulingStrategy):
         elapsed = state["time"] - last["time"]
         done = state["namespace"] != last["namespace"]  # kexp gives every run its own namespace
         delay = state["area"] - last["area"]
-        cpu = (last["cpu_used"] + state["cpu_used"]) / 2 * elapsed
+        # Only while a pod is unfinished: across two runs, elapsed holds minutes of an idle cluster.
+        cpu = (last["cpu_used"] + state["cpu_used"]) / 2 * (state["busy"] - last["busy"])
         phi, following_phi = value(last["phi"]), 0.0 if done else value(state["phi"])  # Phi is zero once the run is over
         bonus = 0.0 if phi is None or following_phi is None else self.lam * (self.gamma * following_phi - phi)
         reward = -(delay + self.beta * cpu) / SCALE + bonus
@@ -313,6 +352,7 @@ class Kaptain(SchedulingStrategy):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        log.info(json.dumps({"event": "kaptain_step", "strategy": self.name, "reward": round(reward, 4),
-                             "delay_task_s": round(delay, 1), "cpu_s": round(cpu, 1), "bonus": round(bonus, 4),
+        log.info(json.dumps({"event": "kaptain_step", "strategy": self.name, "namespace": last["namespace"],
+                             "reward": round(reward, 4), "delay_task_s": round(delay, 1), "cpu_s": round(cpu, 1),
+                             "phi": phi, "following_phi": following_phi, "bonus": round(bonus, 4),
                              "advantage": round(float(advantage), 4), "done": done}))

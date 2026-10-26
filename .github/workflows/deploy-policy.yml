@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - dummy-random
+          - earliest-finish
           - largest-cpu-capacity
           - least-allocated
           - least-used

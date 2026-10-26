@@ -1,11 +1,12 @@
 from .base import SchedulingStrategy
 from .dummy_random import DummyRandom
-from .kaptain import VARIANT, Kaptain, ShortestEstimate
+from .kaptain import VARIANT, EarliestFinish, Kaptain, ShortestEstimate
 from .largest_cpu_capacity import LargestCPUCapacity
 from .least_allocated import LeastAllocated
 from .least_used import LeastUsed
 
-_REGISTRY = {s.name: s for s in (DummyRandom, LargestCPUCapacity, LeastAllocated, LeastUsed, ShortestEstimate)}
+_REGISTRY = {s.name: s for s in (DummyRandom, EarliestFinish, LargestCPUCapacity, LeastAllocated, LeastUsed,
+                                    ShortestEstimate)}
 
 
 def get_strategy(name: str) -> SchedulingStrategy:
