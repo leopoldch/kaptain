@@ -1,0 +1,18 @@
+name = "smoke-stress"
+description = "One cpu, memory and disk pod twice, two seconds apart: checks the stress-ng pods' logs"
+source = "none (pipeline check)"
+seed = 7
+count = 6
+timeout_s = 1800
+
+[arrival]
+process = "fixed"
+interval_s = 2
+
+[mix]
+cpu = 1
+memory = 1
+disk = 1
+
+[resources]
+cpu_millis = [500, 500]

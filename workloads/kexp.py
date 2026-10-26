@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import bisect
 import copy
 import csv
 import json
@@ -34,6 +35,14 @@ WATCH_PROBE = "kexp-watch-probe"  # a pod no scheduler takes, streamed once the 
 WATCH_ENDED = "ENDED"  # watch.csv: the stream stopped before the run did
 SAMPLE_EVERY_S = 5
 SAMPLE_TIMEOUT_S = 30  # a busy kubelet answers late, not never: the master's took over 5 s in bursts
+IMBALANCE_STEP_S = 5
+WORKLOAD = "kaptain.io/workload"
+# KEXP_SCHEDULER=default-scheduler: Kubernetes places the pods, not Kaptain's plugin. KEXP_PIN=<node>:
+# the default scheduler on that node only, to measure each task on each node.
+DEFAULT_SCHEDULER = "default-scheduler"
+# stress-ng --metrics-brief: "stressor bogo-ops real-time usr-time sys-time ..." for the stressor run.
+STRESSOR_LINE = re.compile(r"\]\s+(?:cpu|vm|hdd)\s+\d+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)")
+LOG_PREFIX = re.compile(r"\[pod/([^/\]]+)/[^\]]*\] (.*)")
 
 
 # Arrival processes: the arrival time, in seconds, of every pod.
@@ -107,12 +116,18 @@ def manifests(name, namespace="default"):
     templates = {kind: read_manifest(kind) for kind in experiment["mix"]}
     cpu = experiment["resources"]["cpu_millis"]
     memory = experiment["resources"].get("memory_mib")
+    pin = os.environ.get("KEXP_PIN")
+    scheduler = DEFAULT_SCHEDULER if pin else os.environ.get("KEXP_SCHEDULER")
 
     pods = []
     for index, (arrival, kind) in enumerate(zip(times, kinds)):
         pod = copy.deepcopy(templates[kind])
         pod["metadata"]["name"] = f"{kind}-{index:03d}"
         pod["metadata"]["namespace"] = namespace
+        if scheduler:
+            pod["spec"]["schedulerName"] = scheduler
+        if pin:  # on top of the experiment-node selector, which stays
+            pod["spec"]["nodeSelector"]["kubernetes.io/hostname"] = pin
         if os.environ.get("KEXP_PHASE"):  # train or eval: Kaptain is frozen in eval (bridge/strategies/kaptain.py)
             pod["metadata"]["labels"][PHASE] = os.environ["KEXP_PHASE"]
         pod["metadata"]["annotations"] = {
@@ -417,6 +432,22 @@ def collect(out, namespace, started_at):
         print(f"pods not collected: {error}", file=sys.stderr)
 
     try:
+        # Every container's whole log (with a selector, kubectl keeps the last 10 lines by default).
+        logs = kubectl("-n", namespace, "logs", "-l", WORKLOAD, "--prefix", "--tail=-1", timeout_s=180)
+        (out / "pod-logs.txt").write_text(logs)
+    except RuntimeError as error:
+        print(f"pod logs not collected: {error}", file=sys.stderr)
+
+    try:
+        # Everything the decider said since the run started, the run being alone on the cluster:
+        # its policy's probabilities, rewards and LLM scores. Its last update comes with the next
+        # run, a kaptain_step line naming this namespace.
+        logs = kubectl("-n", "kube-system", "logs", "deploy/kaptain-decider", f"--since-time={started_at}")
+        (out / "decider.jsonl").write_text("".join(line + "\n" for line in logs.splitlines() if line.startswith("{")))
+    except RuntimeError as error:
+        print(f"decider log not collected: {error}", file=sys.stderr)
+
+    try:
         logs = kubectl("-n", "kube-system", "logs", "deploy/kaptain-scheduler", f"--since-time={started_at}")
     except RuntimeError as error:
         print(f"decisions not collected: {error}", file=sys.stderr)
@@ -428,7 +459,12 @@ def collect(out, namespace, started_at):
 def run(name, run_id, namespace, owner, out_root):
     experiment, pods = manifests(name, namespace)
     nodes = worker_nodes()
+    pin = os.environ.get("KEXP_PIN")
+    if pin and pin not in nodes:
+        raise RuntimeError(f"KEXP_PIN={pin}: not an experiment node ({', '.join(sorted(nodes))})")
     env = scheduler_env()
+    # Kaptain's plugin names the policy; without it, what placed the pods.
+    strategy = f"pin-{pin}" if pin else os.environ.get("KEXP_SCHEDULER") or env["KAPTAIN_STRATEGY"]
     images = running_images()  # before any output: a run without clear provenance is not started
     check_no_other_run()
     check_idle(nodes)
@@ -444,8 +480,10 @@ def run(name, run_id, namespace, owner, out_root):
         "source": experiment["source"],
         "seed": experiment["seed"],
         "phase": os.environ.get("KEXP_PHASE") or "online",
+        # Which independent training of the policy (its KAPTAIN_SEED); None for one that does not learn.
+        "replicate": int(os.environ["KEXP_REPLICATE"]) if os.environ.get("KEXP_REPLICATE") else None,
         "pods": len(pods),
-        "strategy": env["KAPTAIN_STRATEGY"],
+        "strategy": strategy,
         "policy_version": env["POLICY_VERSION"],
         "images": images,
         "node_cores": node_cores,
@@ -574,6 +612,66 @@ def utilization(out, node_cores, node_memory):
     return header + lines, imbalance
 
 
+def task_cpu(out):
+    """CPU-seconds of each pod's stressor, usr + sys, as stress-ng reports it: {pod: seconds}.
+
+    The pod's own work, whatever else the node runs. None when the logs were not collected."""
+    path = out / "pod-logs.txt"
+    if not path.exists():
+        return None
+    found = {}
+    for line in path.read_text().splitlines():
+        prefixed = LOG_PREFIX.match(line)
+        stressor = prefixed and STRESSOR_LINE.search(prefixed[2])
+        if stressor:
+            found[prefixed[1]] = float(stressor[1]) + float(stressor[2])
+    return found
+
+
+def mean_imbalance(out, node_cores):
+    """DRS's Imbalance_t (CPU only) averaged over the run; None without two sampled nodes."""
+    path = out / "telemetry.csv"
+    if not path.exists():
+        return None
+    with path.open() as handle:
+        telemetry = list(csv.DictReader(handle))
+    series = imbalance_series(usage_series(telemetry, node_cores, 0, "cpu_cores", "kubelet_time"), ())
+    return statistics.fmean(value for _, value in series) if series else None
+
+
+def usage_series(telemetry, allocatable, start, column, time_column):
+    """% of allocatable per node, at the kubelet's own time, each reading once.
+
+    The sampler asks every 5 s but the kubelet refreshes every 10-15 s: between two
+    refreshes it returns the same reading, which would draw as a flat step."""
+    series = {node: {} for node in allocatable}
+    for row in telemetry:
+        if row["node"] in series and row.get(column):
+            at = seconds(row[time_column]) - start
+            series[row["node"]][at] = 100 * float(row[column]) / allocatable[row["node"]]
+    return {node: sorted(points.items()) for node, points in series.items()}
+
+
+def imbalance_series(cpu, left_out):
+    """Std. dev. of CPU % across nodes at each instant, as DRS's Imbalance_t but CPU only.
+
+    Each node holds its last reading until the next. Only where every node has one: from
+    the latest first reading to the earliest last one."""
+    series = {node: points for node, points in cpu.items() if points and node not in left_out}
+    if len(series) < 2:
+        return []
+    times = {node: [t for t, _ in points] for node, points in series.items()}
+    first = max(t[0] for t in times.values())
+    last = min(t[-1] for t in times.values())
+    imbalance = []
+    t = first
+    while t <= last:
+        values = [series[node][bisect.bisect_right(times[node], t) - 1][1] for node in series]
+        imbalance.append((t, statistics.pstdev(values)))
+        t += IMBALANCE_STEP_S
+    return imbalance
+
+
 def report(out, meta):
     pods_path = out / "pods.json"
     pods = json.loads(pods_path.read_text())["items"] if pods_path.exists() else []
@@ -608,6 +706,12 @@ def report(out, meta):
     decider = meta["images"]["kaptain-decider"]
     warning = "" if built_from_commit(scheduler["image"]) else " — ⚠ not built from a recorded commit"
     usage, imbalance = utilization(out, meta["node_cores"], meta.get("node_memory_bytes", {}))
+    over_time = mean_imbalance(out, meta["node_cores"])
+    cpu = task_cpu(out)
+    task_cpu_text = "missing" if cpu is None else f"none of {len(succeeded)} pods reported it"
+    if cpu:
+        task_cpu_text = (f"mean {statistics.fmean(cpu.values()):.1f} s per pod, "
+                         f"total {sum(cpu.values()):.0f} s ({len(cpu)}/{len(succeeded)} succeeded pods)")
     error = f" Error: `{meta['error']}`." if "error" in meta else ""
 
     return "\n".join([
@@ -622,6 +726,7 @@ def report(out, meta):
         f"- Makespan, first pod created → last pod finished: **{makespan_text}**.",
         f"- Placement wait, pod created → bound (API watch): {placement}.",
         f"- Decisions: {decision_counts}, plugin time {plugin_time}.",
+        f"- Task CPU, stress-ng usr + sys: {task_cpu_text}.",
         "",
         "Completion time: pod created (API server) → container finished (kubelet), 1 s resolution.",
         "",
@@ -634,7 +739,9 @@ def report(out, meta):
         *usage,
         "",
         f"Load imbalance (std. dev. of node mean CPU %): "
-        f"**{'missing' if imbalance is None else f'{imbalance:.1f} points'}**.",
+        f"**{'missing' if imbalance is None else f'{imbalance:.1f} points'}**; "
+        f"over time (DRS's Imbalance_t, CPU, averaged): "
+        f"**{'missing' if over_time is None else f'{over_time:.1f} points'}**.",
         "",
     ])
 
