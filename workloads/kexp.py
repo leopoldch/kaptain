@@ -128,7 +128,8 @@ def manifests(name, namespace="default"):
             pod["spec"]["schedulerName"] = scheduler
         if pin:  # on top of the experiment-node selector, which stays
             pod["spec"]["nodeSelector"]["kubernetes.io/hostname"] = pin
-        if os.environ.get("KEXP_PHASE"):  # train or eval: Kaptain is frozen in eval (bridge/strategies/kaptain.py)
+        # train, valid or eval: Kaptain is frozen in valid and eval (bridge/strategies/kaptain.py)
+        if os.environ.get("KEXP_PHASE"):
             pod["metadata"]["labels"][PHASE] = os.environ["KEXP_PHASE"]
         pod["metadata"]["annotations"] = {
             ARRIVAL: f"{arrival:.3f}",
@@ -482,6 +483,8 @@ def run(name, run_id, namespace, owner, out_root):
         "phase": os.environ.get("KEXP_PHASE") or "online",
         # Which independent training of the policy (its KAPTAIN_SEED); None for one that does not learn.
         "replicate": int(os.environ["KEXP_REPLICATE"]) if os.environ.get("KEXP_REPLICATE") else None,
+        # A valid run: how many training runs the frozen policy had learned from.
+        "checkpoint": int(os.environ["KEXP_CHECKPOINT"]) if os.environ.get("KEXP_CHECKPOINT") else None,
         "pods": len(pods),
         "strategy": strategy,
         "policy_version": env["POLICY_VERSION"],
@@ -529,6 +532,16 @@ def read_decisions(out):
         return None
     lines = [json.loads(line) for line in path.read_text().splitlines()]
     return [line for line in lines if line["event"] == "decision"]
+
+
+def kaptain_decisions(out):
+    """Kaptain's decisions in the run, and how many it made with near-equal probabilities; None without any."""
+    path = out / "decider.jsonl"
+    if not path.exists():
+        return None
+    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    decisions = [line for line in lines if line.get("event") == "kaptain_decision"]
+    return (len(decisions), sum(1 for d in decisions if d.get("flat"))) if decisions else None
 
 
 def makespan(succeeded, expected):
@@ -689,6 +702,9 @@ def report(out, meta):
         plugin_time = f"median {statistics.median(durations):.2f} ms, p95 {p95(durations):.2f} ms"
     fallbacks = sum(1 for d in decisions or [] if d["fallback"])
     decision_counts = "missing" if decisions is None else f"{len(decisions)}, fallbacks: {fallbacks}"
+    kaptain = kaptain_decisions(out)
+    if kaptain:  # a frozen policy that cannot tell the nodes apart chooses by noise
+        decision_counts += f", Kaptain's: {kaptain[0]}, flat (probabilities within 0.05): {kaptain[1]}"
 
     span = makespan(succeeded, meta["pods"])
     makespan_text = "missing" if not pods_path.exists() else "incomplete"

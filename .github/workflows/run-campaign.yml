@@ -3,7 +3,8 @@ name: Run campaign
 # Every experiment, policy and seed listed. Each policy is deployed afresh for each experiment:
 # Kaptain starts from scratch. The policies that learn first train on other seeds, then every
 # policy runs the evaluated seeds, Kaptain frozen; Kaptain's policies do it `replicates` times,
-# independent trainings (KAPTAIN_SEED 1, 2, ...). default-scheduler leaves the pods to
+# independent trainings (KAPTAIN_SEED 1, 2, ...), with validate_every set frozen every that many
+# training runs on the validation seeds 500 and 501. default-scheduler leaves the pods to
 # Kubernetes, pin-<node> to Kubernetes on that node only (each task measured on each node). One
 # report per run in the summary, then a table per experiment of the evaluated runs (ktable.py),
 # all the raw files in one artifact.
@@ -36,6 +37,11 @@ on:
         required: true
         default: "3"
         type: string
+      validate_every:
+        description: Kaptain frozen on the validation seeds 500 501 every that many training runs (0 for never)
+        required: true
+        default: "0"
+        type: string
 
 permissions:
   contents: read
@@ -65,6 +71,7 @@ jobs:
           SEEDS: ${{ inputs.seeds }}
           TRAIN_RUNS: ${{ inputs.train_runs }}
           REPLICATES: ${{ inputs.replicates }}
+          VALIDATE_EVERY: ${{ inputs.validate_every }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies use it
           RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
@@ -83,6 +90,7 @@ jobs:
           done
           [[ $TRAIN_RUNS =~ ^[0-9]+$ ]] || { echo "bad train_runs: $TRAIN_RUNS"; exit 1; }
           [[ $REPLICATES =~ ^[1-9][0-9]*$ ]] || { echo "bad replicates: $REPLICATES"; exit 1; }
+          [[ $VALIDATE_EVERY =~ ^[0-9]+$ ]] || { echo "bad validate_every: $VALIDATE_EVERY"; exit 1; }
 
           failed=0
           runs=()
@@ -104,22 +112,29 @@ jobs:
                   continue
                 fi
                 # Policies that learn train first, on other seeds; then every policy is evaluated,
-                # Kaptain frozen. The others have nothing to learn.
+                # Kaptain frozen. The others have nothing to learn. Kaptain's checkpoints along
+                # the training run frozen on the validation seeds: whether it converges.
                 plan=()
                 if [[ $strategy == kaptain* || $strategy == shortest-estimate || $strategy == earliest-finish ]]; then
-                  for ((i = 0; i < TRAIN_RUNS; i++)); do plan+=("train $((1000 + i))"); done
+                  for ((i = 1; i <= TRAIN_RUNS; i++)); do
+                    plan+=("train $((999 + i))")
+                    if [[ $strategy == kaptain* ]] && (( VALIDATE_EVERY && i % VALIDATE_EVERY == 0 )); then
+                      plan+=("valid 500 $i" "valid 501 $i")
+                    fi
+                  done
                 fi
                 for seed in "${seeds[@]}"; do plan+=("eval $seed"); done
                 for step in "${plan[@]}"; do
-                  read -r phase seed <<< "$step"
+                  read -r phase seed checkpoint <<< "$step"
                   python3 workloads/kexp.py cleanup
                   # A namespace name takes no dot: kaptain-b0.5 becomes kaptain-b0-5 there.
                   if KEXP_PHASE=$phase KEXP_SEED=$seed KEXP_REPLICATE=$replicate KEXP_SCHEDULER=$scheduler KEXP_PIN=$pin \
-                      KEXP_RUN_ID=$RUN-${strategy//./-}${replicate:+-r$replicate}-$phase-s$seed \
+                      KEXP_CHECKPOINT=$checkpoint \
+                      KEXP_RUN_ID=$RUN-${strategy//./-}${replicate:+-r$replicate}-$phase-s$seed${checkpoint:+-c$checkpoint} \
                       python3 workloads/kexp.py run "$experiment" --out results; then
-                    runs+=("| $experiment | $strategy | ${replicate:-–} | $phase | $seed | complete |")
+                    runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint} | $seed | complete |")
                   else
-                    runs+=("| $experiment | $strategy | ${replicate:-–} | $phase | $seed | failed |")
+                    runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint} | $seed | failed |")
                     failed=1
                   fi
                 done
