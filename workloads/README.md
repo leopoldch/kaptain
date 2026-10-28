@@ -111,6 +111,10 @@ A run that fails partway is still reported: status `aborted` with the error, and
 could not be collected shows as `missing`.
 A cancelled run (SIGTERM, Ctrl-C) stops at once: its files are collected, with status `aborted`
 and error `cancelled`, but no report.
+A run whose decider does not settle does not start (status `aborted`): a Kaptain update failed
+earlier, or the decider did not answer. After a run, a failed update, or a count of updates that
+does not match the phase (one after a training run, none otherwise), gives status `unsettled`:
+neither a result nor a checkpoint, and every later run of that deployment refuses to start.
 
 ## Plots
 

@@ -427,14 +427,20 @@ def check_idle(workers):
 
 def settle(phase):
     """Has the decider's policy finish learning from the run that ended and get ready for the
-    next one (bridge/strategies/kaptain.py): between runs, off the decision path. None when the
-    decider did not answer."""
+    next one (bridge/strategies/kaptain.py): between runs, off the decision path. Raises when it
+    did not: a failed update, or no answer."""
     path = f"/api/v1/namespaces/kube-system/services/kaptain-decider:8888/proxy/settle?phase={phase}"
-    try:
-        return json.loads(kubectl("create", "--raw", path, "-f", "-", stdin="{}", timeout_s=600))
-    except Exception as error:
-        print(f"decider not settled: {error}", file=sys.stderr)
-        return None
+    return json.loads(kubectl("create", "--raw", path, "-f", "-", stdin="{}", timeout_s=600))
+
+
+def check_learned(phase, before, after):
+    """A training run is one more update of a policy that learns; any other run, none."""
+    if not (before.get("settled") and after.get("settled")):
+        return  # a policy that does not learn
+    expected = before["episodes"] + (1 if phase == "train" else 0)
+    if after["episodes"] != expected:
+        raise RuntimeError(f"{phase} run: the policy learned {after['episodes'] - before['episodes']} "
+                           f"updates, expected {expected - before['episodes']}")
 
 
 def collect(out, namespace, started_at):
@@ -511,7 +517,7 @@ def run(name, run_id, namespace, owner, out_root):
     plugin = not pin and not os.environ.get("KEXP_SCHEDULER")
     created = False
     try:
-        if plugin:
+        if plugin:  # raises before any pod: the run does not start
             meta["settled"] = settle(meta["phase"])
         create_namespace(namespace, owner)
         created = True
@@ -526,8 +532,14 @@ def run(name, run_id, namespace, owner, out_root):
         raise
     finally:
         # Learned from now, so that its update is in this run's decider log; not when cancelled.
+        # A run whose update failed, or did not happen, is no result and no checkpoint.
         if created and plugin and meta.get("error") != "cancelled":
-            meta["settled_after"] = settle("")
+            try:
+                meta["settled_after"] = settle("")
+                check_learned(meta["phase"], meta["settled"], meta["settled_after"])
+            except Exception as error:
+                meta["status"] = "unsettled"
+                meta["error"] = f"{type(error).__name__}: {error}"
         (out / "meta.json").write_text(json.dumps(meta, indent=2))
         if created:  # otherwise a namespace of that name, if any, is another run's
             collect(out, namespace, meta["started_at"])

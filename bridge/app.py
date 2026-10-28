@@ -34,9 +34,15 @@ def prometheus_metrics():
 @app.post("/settle")
 def settle(phase: str = ""):
     # Off the decision path: kexp calls it after a run and before the next, and may wait.
+    # A failure answers 500: kexp then does not start the next run.
     started = time.perf_counter()
-    result = strategy.settle(phase)
-    log.info(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase,
+    try:
+        result = strategy.settle(phase)
+    except Exception:
+        log.exception(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "error",
+                                  "duration_ms": round((time.perf_counter() - started) * 1000, 3)}))
+        raise
+    log.info(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "ok",
                          "duration_ms": round((time.perf_counter() - started) * 1000, 3), **result}))
     return result
 

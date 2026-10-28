@@ -318,6 +318,7 @@ class Kaptain(SchedulingStrategy):
         self.cluster = None  # started on the first decision: the health check runs without a cluster
         self.episode = []  # the decisions of the training run under way
         self.update = None  # the update under way, if any
+        self.failure = None  # the first update that failed: every settle refuses from then on
         self.kept = None  # the training's runtime estimates, while valid runs use a copy
         self.lock = threading.Lock()  # FastAPI may call scores() from two threads at once
 
@@ -405,7 +406,9 @@ class Kaptain(SchedulingStrategy):
                 self.close(time.time())
             update = self.update
         if update:
-            update.result()
+            update.result()  # raises what the update raised
+        if self.failure:  # also one that ran without settle: no run goes on from a model not learned
+            raise RuntimeError(f"an update failed: {self.failure}")
         with self.cluster.lock:
             if self.kept is not None:
                 self.cluster.estimates.known = copy.deepcopy(self.kept)
@@ -432,8 +435,10 @@ class Kaptain(SchedulingStrategy):
             with self.cluster.lock:
                 used = [u for u in self.cluster.used if u[0] == episode[0]["namespace"]]
             self.learn(episode, samples, used, end)
-        except Exception as error:  # an executor keeps exceptions to itself
+        except Exception as error:  # an executor keeps exceptions to itself: settle raises them
+            self.failure = self.failure or f"{type(error).__name__}: {error}"
             log.exception(json.dumps({"event": "kaptain_learn_failed", "error": str(error)}))
+            raise
 
     def transitions(self, episode, samples, used, end):
         """Per decision: the cost until the next one, discounted to it, and the discount to the next.
