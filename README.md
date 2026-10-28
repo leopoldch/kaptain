@@ -113,14 +113,17 @@ Strategies live in `bridge/strategies/`, one class per file extending the
 
 Our approach is `bridge/strategies/kaptain.py`, the paper's three parts without the LLM:
 Gaussian runtime estimates per task and node, one network that scores every node from its
-features (any node count), and online A2C on the delay reward. The weights are in the name:
+features (any node count), and a separate critic. It learns once per training run, in the
+background: PPO with generalized advantages, discounted over time (half-life 240 s), the run
+ending when its last pod finishes. The weights are in the name:
 `kaptain-b0.5-l1` pays 0.5 per CPU-second and adds the hand-written bonus with lambda = 1
 (Phi = minus the predicted time left); `kaptain` is delay only. `-llm` takes Phi from an LLM
-instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` (`KEXP_PHASE=eval`) freeze
-the policy: best node, no update. `shortest-estimate` is the paper's simple
+instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze
+the policy: best node (a tie drawn at random), no update. `shortest-estimate` is the paper's simple
 rule on the same estimates; `earliest-finish` adds the work left on each node, shared over its
 cores: the load-aware rule Kaptain must beat when contention matters. Estimates and weights live
-in the decider's memory: a redeployment starts from scratch. `KAPTAIN_SEED` (default 7) seeds
+in the decider's memory: a redeployment starts from scratch, but each update logs the weights
+(`kaptain_checkpoint`). `KAPTAIN_SEED` (default 7) seeds
 Kaptain's networks and sampling, for independent trainings of one policy.
 
 ```bash
