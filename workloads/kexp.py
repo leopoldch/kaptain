@@ -425,6 +425,18 @@ def check_idle(workers):
         raise RuntimeError(f"cluster not idle, stop these first: {' '.join(busy)}")
 
 
+def settle(phase):
+    """Has the decider's policy finish learning from the run that ended and get ready for the
+    next one (bridge/strategies/kaptain.py): between runs, off the decision path. None when the
+    decider did not answer."""
+    path = f"/api/v1/namespaces/kube-system/services/kaptain-decider:8888/proxy/settle?phase={phase}"
+    try:
+        return json.loads(kubectl("create", "--raw", path, "-f", "-", stdin="{}", timeout_s=600))
+    except Exception as error:
+        print(f"decider not settled: {error}", file=sys.stderr)
+        return None
+
+
 def collect(out, namespace, started_at):
     """Never raises: a file that could not be collected is absent, and the report says missing."""
     try:
@@ -495,8 +507,12 @@ def run(name, run_id, namespace, owner, out_root):
         "status": "aborted",
     }
 
+    # Only when Kaptain's plugin places the pods: otherwise the decider is not this run's policy.
+    plugin = not pin and not os.environ.get("KEXP_SCHEDULER")
     created = False
     try:
+        if plugin:
+            meta["settled"] = settle(meta["phase"])
         create_namespace(namespace, owner)
         created = True
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
@@ -509,6 +525,9 @@ def run(name, run_id, namespace, owner, out_root):
         meta["error"] = "cancelled"  # SIGINT or SIGTERM: collected, not reported
         raise
     finally:
+        # Learned from now, so that its update is in this run's decider log; not when cancelled.
+        if created and plugin and meta.get("error") != "cancelled":
+            meta["settled_after"] = settle("")
         (out / "meta.json").write_text(json.dumps(meta, indent=2))
         if created:  # otherwise a namespace of that name, if any, is another run's
             collect(out, namespace, meta["started_at"])

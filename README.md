@@ -113,9 +113,13 @@ Strategies live in `bridge/strategies/`, one class per file extending the
 
 Our approach is `bridge/strategies/kaptain.py`, the paper's three parts without the LLM:
 Gaussian runtime estimates per task and node, one network that scores every node from its
-features (any node count), and a separate critic. It learns once per training run, in the
-background: PPO with generalized advantages, discounted over time (half-life 240 s), the run
-ending when its last pod finishes. The weights are in the name:
+features (any node count), and a separate critic. It learns once per training run: PPO with
+generalized advantages, discounted over time (half-life 240 s), the run ending when its last pod
+finishes. This is a new variant: until f53745f, Kaptain learned with one-step A2C at every
+decision. The CPU cost is what the experiment pods used, the CPU time each one's stress-ng
+reports. Between runs kexp calls the decider's `POST /settle`: the run that ended is learned
+from before the next one starts, and a `valid` run starts from the training's runtime estimates
+and leaves them unchanged. The weights are in the name:
 `kaptain-b0.5-l1` pays 0.5 per CPU-second and adds the hand-written bonus with lambda = 1
 (Phi = minus the predicted time left); `kaptain` is delay only. `-llm` takes Phi from an LLM
 instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze

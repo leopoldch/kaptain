@@ -18,8 +18,14 @@
 #    minus the predicted time left of the running pods, per 100, or with -llm a score an LLM
 #    gives the cluster state, in the background: the decision never waits, the update waits for
 #    the score. The weights are in the name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain (both zero).
-# Estimates and weights live in the decider's memory: a redeployment starts from scratch. Every
-# update logs the weights (kaptain_checkpoint), and kexp collects them.
+#    E is what the experiment pods used: the CPU time (usr + sys) stress-ng reports for each,
+#    spread evenly over its run.
+# 4. Between two runs kexp settles the policy: the run that ended is learned from before the next
+#    one starts, so a frozen run uses one model throughout; a valid run starts from the
+#    training's runtime estimates, and the training goes on from them afterwards.
+# This is a new variant: Kaptain trained with one-step A2C, discounted per decision, until
+# f53745f. Estimates and weights live in the decider's memory: a redeployment starts from
+# scratch. Every update logs the weights (kaptain_checkpoint), and kexp collects them.
 # KAPTAIN_SEED seeds the networks and the sampling: independent trainings of one policy.
 
 import base64
@@ -59,6 +65,8 @@ EPOCHS = 8  # passes over an episode at each update
 CLIP = 0.2  # PPO's bound on the change of a decision's probability
 MAX_GRADIENT = 1.0  # norm
 FLAT = 0.05  # probabilities this close together: the policy does not tell the nodes apart
+# stress-ng --metrics-brief: "stressor bogo-ops real-time usr-time sys-time ..." (as workloads/kexp.py reads it).
+STRESSOR_LINE = re.compile(r"\]\s+(?:cpu|vm|hdd)\s+\d+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)")
 PROMPT = """You judge a Kubernetes cluster that runs batch tasks. From its state, score from 0 to
 100 how well it is placed for every task to finish soon: 100 when nothing runs or waits, low
 when tasks pile up on slow or busy nodes. Answer with JSON only: {"score": <number>}."""
@@ -95,17 +103,24 @@ class Estimates:
         return math.exp(found[0]) if found else UNKNOWN_S
 
 
+def millicores(text):
+    return float(text[:-1]) if text.endswith("m") else float(text) * 1000
+
+
 class Cluster:
     """Every 2 s, lists the experiment pods: counts the unfinished ones (a sample: time, seconds
     since the last, count), keeps the running ones, and feeds the runtime of each finished one
-    to the estimates."""
+    to the estimates. With cpu, reads in the background the CPU time each finished pod reports."""
 
-    def __init__(self):
+    def __init__(self, cpu=False):
         self.estimates = Estimates()
         self.samples = collections.deque(maxlen=20000)  # 11 h: longer than any run
         self.unfinished = 0
         self.running = []  # (task, node, started)
         self.seen = set()
+        self.cpu = ThreadPoolExecutor(max_workers=2) if cpu else None
+        self.reading = []  # the CPU reads not finished yet
+        self.used = collections.deque(maxlen=20000)  # (namespace, started, finished, CPU-seconds, measured)
         self.lock = threading.Lock()
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -125,13 +140,32 @@ class Cluster:
                 self.samples.append((now, now - last, self.unfinished))
             last = now
 
-    def poll(self):
-        url = (f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}"
-               f"/api/v1/pods?labelSelector={WORKLOAD}")
+    def refresh(self):
+        """Reads the pods now, not at the next tick: a run's last pods count before the next run."""
+        pods = self.poll()
+        with self.lock:
+            self.read(pods)
+
+    def get(self, path):
+        url = f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}{path}"
         request = urllib.request.Request(url, headers={"Authorization": f"Bearer {open(f'{ACCOUNT}/token').read()}"})
         context = ssl.create_default_context(cafile=f"{ACCOUNT}/ca.crt")
         with urllib.request.urlopen(request, context=context, timeout=5) as answer:
-            return json.load(answer)["items"]
+            return answer.read()
+
+    def poll(self):
+        return json.loads(self.get(f"/api/v1/pods?labelSelector={WORKLOAD}"))["items"]
+
+    def used_cpu(self, namespace, name, started, finished, limit):
+        """What the pod used, from its log; without the line, its limit for its whole run."""
+        try:
+            found = STRESSOR_LINE.search(self.get(f"/api/v1/namespaces/{namespace}/pods/{name}/log").decode())
+        except Exception as error:
+            log.warning(json.dumps({"event": "kaptain_log_failed", "pod": name, "error": str(error)}))
+            found = None
+        seconds = float(found[1]) + float(found[2]) if found else limit / 1000 * (finished - started)
+        with self.lock:
+            self.used.append((namespace, started, finished, seconds, found is not None))
 
     def read(self, pods):
         self.unfinished, self.running = 0, []
@@ -148,6 +182,12 @@ class Cluster:
                 self.seen.add(uid)
                 done = states[0]["terminated"]
                 self.estimates.update(task, node, stamp(done["finishedAt"]) - stamp(done["startedAt"]))
+                if self.cpu:
+                    limit = millicores(pod["spec"]["containers"][0].get("resources", {}).get("limits", {}).get("cpu", "0"))
+                    self.reading = [f for f in self.reading if not f.done()]
+                    self.reading.append(self.cpu.submit(
+                        self.used_cpu, pod["metadata"]["namespace"], pod["metadata"]["name"],
+                        stamp(done["startedAt"]), stamp(done["finishedAt"]), limit))
 
     def time_left(self, node, now):
         return sum(max(self.estimates.seconds(task, on) - (now - started), 0.0)
@@ -277,6 +317,8 @@ class Kaptain(SchedulingStrategy):
             self.logits(self.net, torch.zeros(2, 14), 0)
         self.cluster = None  # started on the first decision: the health check runs without a cluster
         self.episode = []  # the decisions of the training run under way
+        self.update = None  # the update under way, if any
+        self.kept = None  # the training's runtime estimates, while valid runs use a copy
         self.lock = threading.Lock()  # FastAPI may call scores() from two threads at once
 
     def node_vector(self, n, pod, task, now):
@@ -316,17 +358,17 @@ class Kaptain(SchedulingStrategy):
     def scores(self, snapshot: dict) -> dict[str, float]:
         with self.lock:
             if self.cluster is None:
-                self.cluster = Cluster()
+                self.cluster = Cluster(cpu=self.beta > 0)
             torch, now, pod = self.torch, time.time(), snapshot["pod"]
             labels = pod.get("labels") or {}
             frozen = labels.get(PHASE) in FROZEN
+            # Without settle (a run kexp did not start): kexp gives every run its own namespace.
             if self.episode and (frozen or self.episode[0]["namespace"] != pod["namespace"]):
-                self.close(now)  # kexp gives every run its own namespace, and waits for its pods
+                self.close(now)
             with self.cluster.lock:
                 state = {"rows": torch.tensor([self.node_vector(n, pod, labels.get(WORKLOAD), now)
                                                for n in snapshot["nodes"]]),
-                         "unfinished": self.cluster.unfinished, "time": now, "namespace": pod["namespace"],
-                         "cpu_used": sum(n["used_millicpu"] for n in snapshot["nodes"]) / 1000, "phi": 0.0}
+                         "unfinished": self.cluster.unfinished, "time": now, "namespace": pod["namespace"], "phi": 0.0}
                 if self.lam and not frozen:
                     state["phi"] = (self.llm.phi(self.describe(snapshot, now)) if self.llm
                                     else -self.cluster.time_left(None, now) / SCALE)
@@ -350,44 +392,77 @@ class Kaptain(SchedulingStrategy):
                                                    zip(snapshot["nodes"], probabilities.tolist())}}))
         return {n["name"]: 1.0 if n["name"] == chosen else 0.0 for n in snapshot["nodes"]}
 
+    def settle(self, phase):
+        """Between two runs (kexp), never on a decision: learns from the training run that ended
+        and waits for it, so the next run uses one model throughout. A valid run starts from the
+        training's runtime estimates and leaves them as they were: measuring must not teach the
+        training. Any other run goes on from them."""
+        if self.cluster is None:
+            return {"settled": True, "episodes": self.episodes}
+        self.cluster.refresh()
+        with self.lock:
+            if self.episode:
+                self.close(time.time())
+            update = self.update
+        if update:
+            update.result()
+        with self.cluster.lock:
+            if self.kept is not None:
+                self.cluster.estimates.known = copy.deepcopy(self.kept)
+            if phase == "valid":
+                if self.kept is None:
+                    self.kept = copy.deepcopy(self.cluster.estimates.known)
+            elif phase:
+                self.kept = None
+        return {"settled": True, "episodes": self.episodes, "estimates_kept": self.kept is not None}
+
     def close(self, now):
-        """Ends the training run: its last pod has finished. Learns from it in the background."""
+        """Ends the training run: its last pod has finished. Learns from it in the background,
+        once the CPU of its pods is read."""
         episode, self.episode = self.episode, []
         with self.cluster.lock:
             samples = [s for s in self.cluster.samples if s[0] > episode[0]["time"]]
-        self.learner.submit(self.learn_safely, episode, samples, now)
+            reading = list(self.cluster.reading)
+        self.update = self.learner.submit(self.learn_safely, episode, samples, reading, now)
 
-    def learn_safely(self, *episode):
+    def learn_safely(self, episode, samples, reading, end):
         try:
-            self.learn(*episode)
+            for read in reading:
+                read.result()
+            with self.cluster.lock:
+                used = [u for u in self.cluster.used if u[0] == episode[0]["namespace"]]
+            self.learn(episode, samples, used, end)
         except Exception as error:  # an executor keeps exceptions to itself
             log.exception(json.dumps({"event": "kaptain_learn_failed", "error": str(error)}))
 
-    def transitions(self, episode, samples, end):
+    def transitions(self, episode, samples, used, end):
         """Per decision: the cost until the next one, discounted to it, and the discount to the next.
         The last one runs until the last pod finished, then the episode ends: its whole tail counts,
         discounted as any other cost, and nothing follows."""
+        # The CPU each pod used, as a constant rate over its run: (finished, seconds, rate).
+        rates = [(finished, finished - started, seconds / max(finished - started, 1.0))
+                 for _, started, finished, seconds, _ in used]
         out = []
         for k, state in enumerate(episode):
             last = k == len(episode) - 1
             following = None if last else episode[k + 1]
             start, stop = state["time"], end if last else following["time"]
-            # Pods x seconds, and CPU-seconds while a pod is unfinished: an idle cluster is not the policy's doing.
-            cpu = state["cpu_used"] if last else (state["cpu_used"] + following["cpu_used"]) / 2
-            delay = discounted(samples, start, stop, self.kappa)
-            busy = discounted([(t, dt, 1.0 if count else 0.0) for t, dt, count in samples], start, stop, self.kappa)
+            delay = discounted(samples, start, stop, self.kappa)  # pods x seconds
+            cpu = discounted(rates, start, stop, self.kappa) if self.beta else 0.0  # CPU-seconds of the pods
             discount = 0.0 if last else math.exp(-self.kappa * (stop - start))
             phi, following_phi = value(state["phi"]), 0.0 if last else value(following["phi"])  # Phi is zero once over
             bonus = 0.0 if phi is None or following_phi is None else self.lam * (discount * following_phi - phi)
-            out.append({"reward": -(delay + self.beta * cpu * busy) / SCALE + bonus, "discount": discount,
-                        "delay": delay, "cpu": cpu * busy, "bonus": bonus, "phi": phi})
+            out.append({"reward": -(delay + self.beta * cpu) / SCALE + bonus, "discount": discount,
+                        "delay": delay, "cpu": cpu, "bonus": bonus, "phi": phi})
         return out
 
-    def learn(self, episode, samples, end):
+    def learn(self, episode, samples, used, end):
         """PPO on one episode: generalized advantages, normalized; clipped policy steps and a Huber
-        critic, a few epochs over the episode, every gradient clipped."""
+        critic, a few epochs over the episode, the actor's and the critic's gradients clipped apart."""
         torch, net, started = self.torch, self.trained, time.perf_counter()
-        steps = self.transitions(episode, samples, end)
+        steps = self.transitions(episode, samples, used, end)
+        parts = {"actor": [*net["embed"].parameters(), *net["score"].parameters()],
+                 "critic": [*net["critic_embed"].parameters(), *net["critic"].parameters()]}
         with torch.no_grad():
             values = [float(self.worth(net, s["rows"], s["unfinished"])) for s in episode] + [0.0]
         advantages, running = [0.0] * len(steps), 0.0
@@ -403,7 +478,7 @@ class Kaptain(SchedulingStrategy):
         actions = torch.tensor([s["action"] for s in episode])
         old = torch.tensor([s["log_probability"] for s in episode])
 
-        norms, clipped = [], 0.0
+        norms, clipped = {part: [] for part in parts}, 0.0
         for _ in range(EPOCHS):
             dists = [torch.distributions.Categorical(logits=self.logits(net, s["rows"], s["unfinished"])) for s in episode]
             new = torch.stack([d.log_prob(a) for d, a in zip(dists, actions)])
@@ -415,7 +490,8 @@ class Kaptain(SchedulingStrategy):
             loss = policy_loss + value_loss - self.entropy * entropy
             self.optimizer.zero_grad()
             loss.backward()
-            norms.append(float(torch.nn.utils.clip_grad_norm_(net.parameters(), MAX_GRADIENT)))
+            for part, parameters in parts.items():  # a large critic gradient no longer shrinks the actor's
+                norms[part].append(float(torch.nn.utils.clip_grad_norm_(parameters, MAX_GRADIENT)))
             self.optimizer.step()
             clipped = float(((ratio - 1).abs() > CLIP).float().mean())
 
@@ -439,7 +515,8 @@ class Kaptain(SchedulingStrategy):
                              "return": round(float(returns[0]), 3), "last_reward": round(steps[-1]["reward"], 3),
                              "policy_loss": round(policy_loss.item(), 4), "value_loss": round(value_loss.item(), 4),
                              "entropy": round(entropy.item(), 4), "clipped": round(clipped, 3),
-                             "gradient_norm": [round(x, 3) for x in norms], "silent_units": silent,
+                             "gradient_norm": {part: [round(x, 3) for x in n] for part, n in norms.items()},
+                             "silent_units": silent, "cpu_unmeasured": sum(1 for u in used if not u[4]),
                              "spread": round(statistics.median(spreads), 4),
                              "flat": round(sum(s < FLAT for s in spreads) / len(spreads), 3),
                              "seconds": round(time.perf_counter() - started, 2)}))

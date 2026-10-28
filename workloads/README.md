@@ -25,7 +25,9 @@ seeds ± 95% interval, and the change against `--reference` (least-allocated) on
 A policy trained several times (`KEXP_REPLICATE`, the decider's `KAPTAIN_SEED`) gets one value
 per training, its mean over the seeds, and the interval is over the trainings.
 `KEXP_PHASE=valid` runs Kaptain frozen during its training, `KEXP_CHECKPOINT` saying after how
-many training runs; ktable lists them apart, one column per checkpoint.
+many training runs; ktable lists them apart, one column per checkpoint. When Kaptain's plugin
+places the pods, kexp settles the decider before and after each run (`settled`, `settled_after`
+in `meta.json`): it learns from a training run before the next run starts.
 `KEXP_SCHEDULER=default-scheduler` leaves the pods to Kubernetes' own scheduler, and
 `KEXP_PIN=<node>` to it on that node only, to measure each task on each node (`calibration`);
 the run's policy is then `default-scheduler` or `pin-<node>`.
