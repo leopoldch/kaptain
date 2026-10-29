@@ -1,5 +1,6 @@
-# The decider lists pods, nothing else: the kaptain strategies learn runtimes from the
-# experiment pods and count the unfinished ones (bridge/strategies/kaptain.py).
+# The decider lists pods and reads their logs, nothing else: the kaptain strategies learn
+# runtimes from the experiment pods, count the unfinished ones, and read the CPU time each one
+# reports (bridge/strategies/kaptain.py).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -14,6 +15,9 @@ rules:
   - apiGroups: [""]
     resources: [pods]
     verbs: [list]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

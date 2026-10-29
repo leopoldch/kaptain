@@ -3,7 +3,8 @@
 change against a reference policy, paired by seed. A policy trained several times independently
 (replicates) gets one value per training, its mean over the seeds, and the interval is over the
 trainings: whether training reliably gives a good policy. Then the mean delay of each training
-run, in order, to see how fast each policy learns. Reads run folders as kexp.py writes them.
+run, in order, to see how fast each policy learns, and of the frozen checkpoints run on the
+validation seeds, to see whether it converges. Reads run folders as kexp.py writes them.
 
     python3 ktable.py runs/ --reference least-allocated"""
 import argparse
@@ -99,6 +100,22 @@ def learning(experiment, training):
     return lines + [""]
 
 
+def validating(experiment, validation):
+    """Mean delay of each frozen checkpoint over the validation seeds: whether training converges."""
+    curves = {(strategy, replicate): checkpoints for (e, strategy), replicates in sorted(validation.items())
+              if e == experiment for replicate, checkpoints in sorted(replicates.items(), key=lambda kv: kv[0] or 0)}
+    if not curves:
+        return []
+    order = sorted({c for checkpoints in curves.values() for c in checkpoints})
+    lines = ["Frozen after that many training runs, on the validation seeds: mean delay (s).", "",
+             "| Policy | " + " | ".join(str(c) for c in order) + " |",
+             "|---|" + "---:|" * len(order)]
+    for (strategy, replicate), checkpoints in curves.items():
+        delays = [f"{statistics.fmean(checkpoints[c]):.1f}" if c in checkpoints else "–" for c in order]
+        lines.append(f"| {name(strategy, replicate)} | " + " | ".join(delays) + " |")
+    return lines + [""]
+
+
 def row(replicates, base):
     """Cells of one policy: per metric, then per compared metric its change against the reference."""
     if len(replicates) == 1:  # one training, or none: the interval is over the seeds
@@ -118,6 +135,7 @@ def row(replicates, base):
 def tables(paths, reference):
     runs = defaultdict(lambda: defaultdict(dict))  # (experiment, strategy) -> replicate -> seed -> metrics
     training = defaultdict(lambda: defaultdict(dict))  # the same, for the training runs
+    validation = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # ... -> replicate -> checkpoint -> delays
     skipped = []
     for meta_path in sorted(p for path in paths for p in path.rglob("meta.json")):
         folder, meta = meta_path.parent, json.loads(meta_path.read_text())
@@ -128,11 +146,15 @@ def tables(paths, reference):
         if values is None:
             skipped.append(f"{folder.name} (no pod succeeded)")
             continue
+        if meta.get("phase") == "valid":  # checkpoints along the training, not results either
+            validation[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("checkpoint")].append(
+                values["mean delay (s)"])
+            continue
         phase_runs = training if meta.get("phase") == "train" else runs  # training runs are not results
         phase_runs[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
 
     lines = []
-    for experiment in sorted({e for e, _ in runs} | {e for e, _ in training}):
+    for experiment in sorted({e for e, _ in runs} | {e for e, _ in training} | {e for e, _ in validation}):
         # The reference by seed, averaged over its trainings if it has several.
         reference_runs = runs.get((experiment, reference), {})
         seeds = {s for by_seed in reference_runs.values() for s in by_seed}
@@ -153,6 +175,7 @@ def tables(paths, reference):
             lines.append(f"| `{strategy}` | {count} | " + " | ".join(cells + changes) + " |")
         lines.append("")
         lines += learning(experiment, training)
+        lines += validating(experiment, validation)
     if skipped:
         lines += ["Left out: " + ", ".join(skipped) + ".", ""]
     return "\n".join(lines)

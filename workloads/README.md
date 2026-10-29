@@ -24,6 +24,10 @@ policy to deploy first. The report lands in the run summary, the raw files in th
 seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.
 A policy trained several times (`KEXP_REPLICATE`, the decider's `KAPTAIN_SEED`) gets one value
 per training, its mean over the seeds, and the interval is over the trainings.
+`KEXP_PHASE=valid` runs Kaptain frozen during its training, `KEXP_CHECKPOINT` saying after how
+many training runs; ktable lists them apart, one column per checkpoint. When Kaptain's plugin
+places the pods, kexp settles the decider before and after each run (`settled`, `settled_after`
+in `meta.json`): it learns from a training run before the next run starts.
 `KEXP_SCHEDULER=default-scheduler` leaves the pods to Kubernetes' own scheduler, and
 `KEXP_PIN=<node>` to it on that node only, to measure each task on each node (`calibration`);
 the run's policy is then `default-scheduler` or `pin-<node>`.
@@ -68,8 +72,9 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 `results/<experiment>-<run>/`: `pods.json` (what Kubernetes did; `kexp.py manifests`
 regenerates what was planned), `watch.csv` (every pod change streamed by the API, timed by the runner; an `ENDED` row if the stream stopped before the run), `decisions.jsonl` (the plugin's decision and binding lines for this run),
 `pod-logs.txt` (every pod's log, each line prefixed with its pod), `decider.jsonl` (the decider's JSON lines since
-the run started: Kaptain's probabilities per decision, rewards, LLM scores; the last update of a run is learned at the
-next run's first decision, a `kaptain_step` line naming the namespace it belongs to),
+the run started: Kaptain's probabilities per decision, rewards, LLM scores; a training run is learned from at the
+next run's first decision, so its `kaptain_step`, `kaptain_update` (losses, entropy, gradient norms, silent units) and
+`kaptain_checkpoint` (the weights) lines name the namespace they belong to),
 `telemetry.csv` (kubelet CPU and memory working set per node every 5 s, later when a busy kubelet is slow to answer;
 each with the kubelet's own timestamp), `network.csv` (from the same answers: cumulative bytes received and sent, for every
 interface, since the one carrying the cluster's traffic differs between nodes), `meta.json` (with each node's allocatable
@@ -84,7 +89,7 @@ The report gives:
 | Makespan | first pod created → last pod finished; only when every pod succeeded |
 | Completion time per workload and per node (mean, p95, max) | pod created (API server) → container finished (kubelet) |
 | Placement wait (median, p95, max) | pod first seen → first seen with a node, in the API watch stream, both timed by the runner on the master, ms |
-| Decisions, fallbacks, plugin time (median, p95) | the plugin's own millisecond timer: snapshot + decider call |
+| Decisions, fallbacks, plugin time (median, p95); Kaptain's decisions and how many were flat | the plugin's own millisecond timer: snapshot + decider call; flat: its probabilities within 0.05 of each other |
 | CPU and memory utilization per node (samples, mean, peak) | kubelet CPU usage and memory working set / allocatable, refreshed by the kubelet every 10–15 s; memory `missing` for runs before 2026-10-09 |
 | Task CPU (mean per pod, total) | each stress-ng pod's own usr + sys CPU-seconds, from its `--metrics-brief` line: the pod's work, whatever else its node runs |
 | Load imbalance | population std. dev. of the node mean CPU %. CPU only and over run means: DRS instead sums, over six resources, the weighted across-node std. dev. at each instant |
@@ -106,6 +111,10 @@ A run that fails partway is still reported: status `aborted` with the error, and
 could not be collected shows as `missing`.
 A cancelled run (SIGTERM, Ctrl-C) stops at once: its files are collected, with status `aborted`
 and error `cancelled`, but no report.
+A run whose decider does not settle does not start (status `aborted`): a Kaptain update failed
+earlier, or the decider did not answer. After a run, a failed update, or a count of updates that
+does not match the phase (one after a training run, none otherwise), gives status `unsettled`:
+neither a result nor a checkpoint, and every later run of that deployment refuses to start.
 
 ## Plots
 

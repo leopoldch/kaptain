@@ -31,6 +31,22 @@ def prometheus_metrics():
     return Response(decider_metrics.render(), media_type="text/plain; version=0.0.4")
 
 
+@app.post("/settle")
+def settle(phase: str = ""):
+    # Off the decision path: kexp calls it after a run and before the next, and may wait.
+    # A failure answers 500: kexp then does not start the next run.
+    started = time.perf_counter()
+    try:
+        result = strategy.settle(phase)
+    except Exception:
+        log.exception(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "error",
+                                  "duration_ms": round((time.perf_counter() - started) * 1000, 3)}))
+        raise
+    log.info(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "ok",
+                         "duration_ms": round((time.perf_counter() - started) * 1000, 3), **result}))
+    return result
+
+
 @app.post("/decide")
 def decide(snapshot: dict):
     # `strategy` names what actually scored, not what the caller believes is deployed here:
