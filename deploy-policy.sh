@@ -5,7 +5,7 @@ set -euo pipefail
 strategy=${1:-}
 case "$strategy" in
   dummy-random|earliest-finish|largest-cpu-capacity|least-allocated|least-used|shortest-estimate) ;;
-  *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm)?)?$ ]] ||
+  *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm|-placebo)?)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
 if [[ $strategy != *-llm ]]; then
