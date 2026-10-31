@@ -125,7 +125,11 @@ and leaves them unchanged. The weights are in the name:
 instead (`OPENAI_API_KEY`), and `-placebo` draws it at random over the LLM's range, a bonus as
 large without information: `kaptain-l4-llm` against `kaptain-l4-placebo` tells whether the LLM's
 scores, not the bonus itself, help. Every decision logs the state as the LLM reads it and the
-hand-written Phi, so that any Phi can be scored offline against what the state actually cost. Pods labelled `kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze
+hand-written Phi, so that any Phi can be scored offline against what the state actually cost.
+`-ef`, last in the name (`kaptain-ef`), starts the policy from earliest-finish: the network only
+learns a correction to its scores, zero at first, so the untrained policy is earliest-finish,
+instead of a random one that sends a quarter of the pods to the Pi. Pods labelled
+`kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze
 the policy: best node (a tie drawn at random), no update. `shortest-estimate` is the paper's simple
 rule on the same estimates; `earliest-finish` adds the work left on each node, shared over its
 cores: the load-aware rule Kaptain must beat when contention matters. Estimates and weights live

@@ -5,10 +5,10 @@ set -euo pipefail
 strategy=${1:-}
 case "$strategy" in
   dummy-random|earliest-finish|largest-cpu-capacity|least-allocated|least-used|shortest-estimate) ;;
-  *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm|-placebo)?)?$ ]] ||
+  *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-l[0-9]+(\.[0-9]+)?(-llm|-placebo)?)?(-ef)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
-if [[ $strategy != *-llm ]]; then
+if [[ $strategy != *-llm && $strategy != *-llm-ef ]]; then
   unset OPENAI_API_KEY  # only the -llm strategies get the key
 elif [[ -z ${OPENAI_API_KEY:-} ]]; then
   echo "$strategy needs OPENAI_API_KEY (the repository secret, in GitHub Actions)." >&2

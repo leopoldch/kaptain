@@ -9,7 +9,10 @@
 #    critic, with its own embedding, values g. It samples its nodes during a training run (an
 #    episode) and learns once the run is over, in the background: PPO with generalized
 #    advantages. A pod labelled kaptain.io/phase=eval or valid freezes it: it picks its best
-#    node and learns nothing (the estimates still do).
+#    node and learns nothing (the estimates still do). With -ef, the network only corrects
+#    earliest-finish: a node's logit is its earliest-finish score over TEMPERATURE_S plus the
+#    network's, whose last layer starts at zero, so the untrained policy is earliest-finish and
+#    the training learns how far to move from it, instead of starting from a random policy.
 # 3. Time, not decisions, discounts: gamma^t with a half-life of HALF_LIFE_S. The reward of a
 #    decision is -(C + beta E) / 100 + lam (gamma^dt Phi(s') - Phi(s)) until the next one, C the
 #    unfinished pods x seconds and E the CPU-seconds used while a pod is unfinished, both
@@ -19,7 +22,7 @@
 #    gives the cluster state, in the background: the decision never waits, the update waits for
 #    the score. With -placebo, Phi is drawn at random over the LLM's range, -10 to 0: a bonus as
 #    large carrying no information, against which the LLM's is compared. The weights are in the
-#    name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain-l4-placebo, kaptain (both zero).
+#    name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain-l4-placebo, kaptain (both zero); -ef last.
 #    E is what the experiment pods used: the CPU time (usr + sys) stress-ng reports for each,
 #    spread evenly over its run.
 # 4. Between two runs kexp settles the policy: the run that ended is learned from before the next
@@ -58,7 +61,8 @@ MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
-VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?")  # only with a lambda: they give the Phi of the bonus
+VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?(-ef)?")  # -llm, -placebo only with a lambda: they give the Phi of the bonus
+TEMPERATURE_S = 20.0  # of the earliest-finish prior (-ef): nodes this many seconds apart in finish time, e times as likely
 PHASE = "kaptain.io/phase"
 FROZEN = ("eval", "valid")  # phases that only use the policy: the evaluation, and checkpoints along the training
 HALF_LIFE_S = 240.0  # of the discount: about a disk task on the Pi, which a shorter one would let look cheap
@@ -227,16 +231,23 @@ class EarliestFinish(SchedulingStrategy):
         if self.cluster is None:
             self.cluster = Cluster()
         task, now = (snapshot["pod"].get("labels") or {}).get(WORKLOAD), time.time()
-        scores = {}
         with self.cluster.lock:
-            for n in snapshot["nodes"]:
-                estimate = self.cluster.estimates.get(task, n["name"])
-                if not (estimate and estimate[2]):
-                    scores[n["name"]] = 0.0  # never run there: tried first, as by shortest-estimate
-                    continue
-                queue = self.cluster.time_left(n["name"], now) / (n["allocatable_millicpu"] / 1000)
-                scores[n["name"]] = -(math.exp(estimate[0]) + queue)
-        return scores
+            finish = finish_scores(self.cluster, task, snapshot["nodes"], now)
+        return {n["name"]: score for n, score in zip(snapshot["nodes"], finish)}
+
+
+def finish_scores(cluster, task, nodes, now):
+    """Earliest-finish's score of each node, under the cluster's lock: minus the pod's estimated
+    runtime there plus the work left on it shared over its cores, 0 where the task never ran."""
+    scores = []
+    for n in nodes:
+        estimate = cluster.estimates.get(task, n["name"])
+        if not (estimate and estimate[2]):
+            scores.append(0.0)  # never run there: tried first, as by shortest-estimate
+            continue
+        queue = cluster.time_left(n["name"], now) / (n["allocatable_millicpu"] / 1000)
+        scores.append(-(math.exp(estimate[0]) + queue))
+    return scores
 
 
 class LLM:
@@ -303,6 +314,7 @@ class Kaptain(SchedulingStrategy):
         self.random = random.Random(self.seed)  # breaks the ties of a frozen policy
         # Its own generator: drawing Phi leaves the policy's sampling as it is without it.
         self.placebo = random.Random(self.seed + 1) if weights[3] == "-placebo" else None
+        self.residual = bool(weights[4])  # -ef: the network corrects earliest-finish instead of scoring alone
 
         def embedding():
             return nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
@@ -312,6 +324,9 @@ class Kaptain(SchedulingStrategy):
         self.net = nn.ModuleDict({"embed": embedding(), "critic_embed": embedding(),
                                   "score": nn.Sequential(nn.Linear(2 * hidden + 1, hidden), nn.ReLU(), nn.Linear(hidden, 1)),
                                   "critic": nn.Sequential(nn.Linear(hidden + 1, hidden), nn.ReLU(), nn.Linear(hidden, 1))})
+        if self.residual:  # a correction of zero: untrained, the policy is earliest-finish
+            nn.init.zeros_(self.net["score"][-1].weight)
+            nn.init.zeros_(self.net["score"][-1].bias)
         # The learner trains its own copy in the background, then hands its weights over.
         self.trained = copy.deepcopy(self.net)
         self.optimizer = torch.optim.Adam(self.trained.parameters(), lr=lr)
@@ -353,9 +368,11 @@ class Kaptain(SchedulingStrategy):
     def summary(self, h, unfinished):
         return self.torch.cat([h.mean(0), self.torch.tensor([math.log1p(unfinished)])])
 
-    def logits(self, net, rows, unfinished):
+    def logits(self, net, rows, unfinished, prior=None):
+        """Each node's logit; with -ef, the earliest-finish prior of the decision plus the network's correction."""
         h = net["embed"](rows)
-        return net["score"](self.torch.cat([h, self.summary(h, unfinished).expand(len(h), -1)], 1)).squeeze(1)
+        out = net["score"](self.torch.cat([h, self.summary(h, unfinished).expand(len(h), -1)], 1)).squeeze(1)
+        return out if prior is None else prior + out
 
     def worth(self, net, rows, unfinished):
         return net["critic"](self.summary(net["critic_embed"](rows), unfinished))[0]
@@ -375,13 +392,16 @@ class Kaptain(SchedulingStrategy):
                                                for n in snapshot["nodes"]]),
                          "unfinished": self.cluster.unfinished, "time": now, "namespace": pod["namespace"], "phi": 0.0,
                          "analytic": -self.cluster.time_left(None, now) / SCALE}
+                # Kept with the decision: the update scores it again with the prior it had then.
+                state["prior"] = (torch.tensor(finish_scores(self.cluster, labels.get(WORKLOAD), snapshot["nodes"], now))
+                                  / TEMPERATURE_S if self.residual else None)
                 # Logged with every decision, so that any Phi can be scored offline on real states.
                 description = self.describe(snapshot, now)
                 if self.lam and not frozen:
                     state["phi"] = (self.llm.phi(description) if self.llm
                                     else self.placebo.uniform(-10.0, 0.0) if self.placebo else state["analytic"])
             with torch.no_grad():
-                logits = self.logits(self.net, state["rows"], state["unfinished"])
+                logits = self.logits(self.net, state["rows"], state["unfinished"], state["prior"])
             probabilities = torch.softmax(logits, 0)
             if frozen:  # its best node; among equals, any: never the first one listed
                 best = float(logits.max())
@@ -397,6 +417,9 @@ class Kaptain(SchedulingStrategy):
                                  "namespace": pod["namespace"], "pod": pod.get("name"), "frozen": frozen,
                                  "chosen": chosen, "flat": spread < FLAT, "episodes": self.episodes,
                                  "state": description, "phi_analytic": round(state["analytic"], 4),
+                                 # Where earliest-finish alone would go: how far the correction moved it.
+                                 **({"prior_choice": snapshot["nodes"][int(state["prior"].argmax())]["name"]}
+                                    if self.residual else {}),
                                  "probabilities": {n["name"]: round(p, 4) for n, p in
                                                    zip(snapshot["nodes"], probabilities.tolist())}}))
         return {n["name"]: 1.0 if n["name"] == chosen else 0.0 for n in snapshot["nodes"]}
@@ -493,7 +516,8 @@ class Kaptain(SchedulingStrategy):
 
         norms, clipped = {part: [] for part in parts}, 0.0
         for _ in range(EPOCHS):
-            dists = [torch.distributions.Categorical(logits=self.logits(net, s["rows"], s["unfinished"])) for s in episode]
+            dists = [torch.distributions.Categorical(logits=self.logits(net, s["rows"], s["unfinished"], s["prior"]))
+                     for s in episode]
             new = torch.stack([d.log_prob(a) for d, a in zip(dists, actions)])
             entropy = torch.stack([d.entropy() for d in dists]).mean()
             ratio = torch.exp(new - old)
@@ -513,7 +537,7 @@ class Kaptain(SchedulingStrategy):
             # Units that no node of the episode turns on: a ReLU that never fires stops learning.
             silent = {part: float((net[part](rows) <= 0).all(0).float().mean()) for part in ("embed", "critic_embed")}
             spreads = [float(p.max() - p.min()) for p in
-                       (torch.softmax(self.logits(net, s["rows"], s["unfinished"]), 0) for s in episode)]
+                       (torch.softmax(self.logits(net, s["rows"], s["unfinished"], s["prior"]), 0) for s in episode)]
         with self.lock:
             self.net.load_state_dict(net.state_dict())
             self.episodes += 1
