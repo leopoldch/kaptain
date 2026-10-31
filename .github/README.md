@@ -14,7 +14,9 @@ Open **Actions -> select a workflow -> Run workflow** on the default branch.
   Kaptain frozen. Each Kaptain policy does it `replicates` times, independent trainings
   (`KAPTAIN_SEED` 1, 2, ...); with `validate_every` set, every that many training runs it also
   runs frozen on the validation seeds 500 and 501, to see whether it converges. `pin-<node>` runs Kubernetes on that node only, to measure each
-  task on each node (`calibration`). The summary has one report per run, then a table per
+  task on each node (`calibration`, `calibration-load`). `nodes` runs a campaign on other machines
+  than those labelled `kaptain.io/experiment-node=true`, for instance without `leopold-pve-worker-1`
+  and with `alex-jetson`. The summary has one report per run, then a table per
   experiment of the evaluated runs (`workloads/ktable.py`): mean ± 95% interval per policy
   (over the trainings when there are several), and the change against least-allocated paired
   by seed. A run that fails does not stop the others.

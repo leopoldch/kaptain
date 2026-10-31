@@ -17,7 +17,9 @@
 #    The last decision's runs until the run's last pod finished, and ends the episode. Phi is
 #    minus the predicted time left of the running pods, per 100, or with -llm a score an LLM
 #    gives the cluster state, in the background: the decision never waits, the update waits for
-#    the score. The weights are in the name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain (both zero).
+#    the score. With -placebo, Phi is drawn at random over the LLM's range, -10 to 0: a bonus as
+#    large carrying no information, against which the LLM's is compared. The weights are in the
+#    name: kaptain-b0.5-l1, kaptain-l4-llm, kaptain-l4-placebo, kaptain (both zero).
 #    E is what the experiment pods used: the CPU time (usr + sys) stress-ng reports for each,
 #    spread evenly over its run.
 # 4. Between two runs kexp settles the policy: the run that ended is learned from before the next
@@ -56,7 +58,7 @@ MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
-VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm)?)?")  # -llm only with a lambda: it gives the Phi of the bonus
+VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?")  # only with a lambda: they give the Phi of the bonus
 PHASE = "kaptain.io/phase"
 FROZEN = ("eval", "valid")  # phases that only use the policy: the evaluation, and checkpoints along the training
 HALF_LIFE_S = 240.0  # of the discount: about a disk task on the Pi, which a shorter one would let look cheap
@@ -292,13 +294,15 @@ class Kaptain(SchedulingStrategy):
         self.beta = float(weights[1] or 0)  # weight of the CPU-seconds
         self.lam = float(weights[2] or 0)  # weight of the Phi bonus
         if weights[3] and not self.lam:
-            raise ValueError(f"{name}: -llm scores the bonus, which lambda = 0 turns off")
-        self.llm = LLM() if weights[3] else None
+            raise ValueError(f"{name}: {weights[3]} gives the bonus its Phi, which lambda = 0 turns off")
+        self.llm = LLM() if weights[3] == "-llm" else None
         self.seed = int(os.environ.get("KAPTAIN_SEED") or seed)
         torch.manual_seed(self.seed)
         torch.set_num_threads(1)  # the master is a shared 4 vCPU VPS
         self.torch, self.kappa, self.entropy = torch, math.log(2) / half_life_s, entropy
         self.random = random.Random(self.seed)  # breaks the ties of a frozen policy
+        # Its own generator: drawing Phi leaves the policy's sampling as it is without it.
+        self.placebo = random.Random(self.seed + 1) if weights[3] == "-placebo" else None
 
         def embedding():
             return nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
@@ -369,10 +373,13 @@ class Kaptain(SchedulingStrategy):
             with self.cluster.lock:
                 state = {"rows": torch.tensor([self.node_vector(n, pod, labels.get(WORKLOAD), now)
                                                for n in snapshot["nodes"]]),
-                         "unfinished": self.cluster.unfinished, "time": now, "namespace": pod["namespace"], "phi": 0.0}
+                         "unfinished": self.cluster.unfinished, "time": now, "namespace": pod["namespace"], "phi": 0.0,
+                         "analytic": -self.cluster.time_left(None, now) / SCALE}
+                # Logged with every decision, so that any Phi can be scored offline on real states.
+                description = self.describe(snapshot, now)
                 if self.lam and not frozen:
-                    state["phi"] = (self.llm.phi(self.describe(snapshot, now)) if self.llm
-                                    else -self.cluster.time_left(None, now) / SCALE)
+                    state["phi"] = (self.llm.phi(description) if self.llm
+                                    else self.placebo.uniform(-10.0, 0.0) if self.placebo else state["analytic"])
             with torch.no_grad():
                 logits = self.logits(self.net, state["rows"], state["unfinished"])
             probabilities = torch.softmax(logits, 0)
@@ -389,6 +396,7 @@ class Kaptain(SchedulingStrategy):
             log.info(json.dumps({"event": "kaptain_decision", "strategy": self.name, "seed": self.seed,
                                  "namespace": pod["namespace"], "pod": pod.get("name"), "frozen": frozen,
                                  "chosen": chosen, "flat": spread < FLAT, "episodes": self.episodes,
+                                 "state": description, "phi_analytic": round(state["analytic"], 4),
                                  "probabilities": {n["name"]: round(p, 4) for n, p in
                                                    zip(snapshot["nodes"], probabilities.tolist())}}))
         return {n["name"]: 1.0 if n["name"] == chosen else 0.0 for n in snapshot["nodes"]}
@@ -458,7 +466,7 @@ class Kaptain(SchedulingStrategy):
             phi, following_phi = value(state["phi"]), 0.0 if last else value(following["phi"])  # Phi is zero once over
             bonus = 0.0 if phi is None or following_phi is None else self.lam * (discount * following_phi - phi)
             out.append({"reward": -(delay + self.beta * cpu) / SCALE + bonus, "discount": discount,
-                        "delay": delay, "cpu": cpu, "bonus": bonus, "phi": phi})
+                        "delay": delay, "cpu": cpu, "bonus": bonus, "phi": phi, "analytic": state["analytic"]})
         return out
 
     def learn(self, episode, samples, used, end):
@@ -512,12 +520,17 @@ class Kaptain(SchedulingStrategy):
         for state, step, a, v in zip(episode, steps, advantages, values):
             log.info(json.dumps({"event": "kaptain_step", "strategy": self.name, "namespace": state["namespace"],
                                  "reward": round(step["reward"], 4), "delay_task_s": round(step["delay"], 1),
-                                 "cpu_s": round(step["cpu"], 1), "phi": step["phi"], "bonus": round(step["bonus"], 4),
+                                 "cpu_s": round(step["cpu"], 1), "phi": step["phi"], "phi_analytic": round(step["analytic"], 4),
+                                 "bonus": round(step["bonus"], 4),
                                  "discount": round(step["discount"], 4), "value": round(v, 4),
                                  "advantage": round(a, 4)}))
         log.info(json.dumps({"event": "kaptain_update", "strategy": self.name, "seed": self.seed,
                              "namespace": episode[0]["namespace"], "episode": self.episodes, "decisions": len(episode),
                              "return": round(float(returns[0]), 3), "last_reward": round(steps[-1]["reward"], 3),
+                             # The run's cost without the bonus, each part discounted to its decision: return is the critic's target.
+                             "cost": round(sum((s["delay"] + self.beta * s["cpu"]) / SCALE for s in steps), 3),
+                             "bonus": round(sum(s["bonus"] for s in steps), 3),
+                             "llm_failed": sum(1 for s in steps if s["phi"] is None),
                              "policy_loss": round(policy_loss.item(), 4), "value_loss": round(value_loss.item(), 4),
                              "entropy": round(entropy.item(), 4), "clipped": round(clipped, 3),
                              "gradient_norm": {part: [round(x, 3) for x in n] for part, n in norms.items()},

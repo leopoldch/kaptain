@@ -122,7 +122,10 @@ from before the next one starts, and a `valid` run starts from the training's ru
 and leaves them unchanged. The weights are in the name:
 `kaptain-b0.5-l1` pays 0.5 per CPU-second and adds the hand-written bonus with lambda = 1
 (Phi = minus the predicted time left); `kaptain` is delay only. `-llm` takes Phi from an LLM
-instead (`OPENAI_API_KEY`). Pods labelled `kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze
+instead (`OPENAI_API_KEY`), and `-placebo` draws it at random over the LLM's range, a bonus as
+large without information: `kaptain-l4-llm` against `kaptain-l4-placebo` tells whether the LLM's
+scores, not the bonus itself, help. Every decision logs the state as the LLM reads it and the
+hand-written Phi, so that any Phi can be scored offline against what the state actually cost. Pods labelled `kaptain.io/phase=eval` or `valid` (`KEXP_PHASE`) freeze
 the policy: best node (a tie drawn at random), no update. `shortest-estimate` is the paper's simple
 rule on the same estimates; `earliest-finish` adds the work left on each node, shared over its
 cores: the load-aware rule Kaptain must beat when contention matters. Estimates and weights live

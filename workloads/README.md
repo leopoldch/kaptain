@@ -29,8 +29,9 @@ many training runs; ktable lists them apart, one column per checkpoint. When Kap
 places the pods, kexp settles the decider before and after each run (`settled`, `settled_after`
 in `meta.json`): it learns from a training run before the next run starts.
 `KEXP_SCHEDULER=default-scheduler` leaves the pods to Kubernetes' own scheduler, and
-`KEXP_PIN=<node>` to it on that node only, to measure each task on each node (`calibration`);
-the run's policy is then `default-scheduler` or `pin-<node>`.
+`KEXP_PIN=<node>` to it on that node only, to measure each task on each node (`calibration`,
+`calibration-load`); the run's policy is then `default-scheduler` or `pin-<node>`.
+`KEXP_NODES="<node> ..."` runs on those nodes instead of the labelled ones (see below).
 
 ## Experiment file
 
@@ -64,6 +65,7 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 | `web` | Zhou et al. 2026: NGINX services | 60 s lifetime, Poisson rate are ours |
 | `even-10s`, `even-5s` | `drs-even`, one pod every 10 or 5 s: contention matters | the faster arrivals are ours |
 | `calibration` | each task alone, 5 of each, 240 s apart, 500m: with `KEXP_PIN`, one node at a time | ours |
+| `calibration-load` | the same under contention: 4 of each, 10 s apart, on one node at a time | ours |
 | `smoke` | pipeline check only | — |
 | `smoke-stress` | pipeline check of the stress-ng pods, their logs included | — |
 
@@ -169,6 +171,10 @@ select that label and tolerate the control-plane taint, and `kexp.py` measures a
 same nodes. Since 2026-10-09 these are `alex-master`, `leopold-raspberrypi` and
 `leopold-pve-worker-1` to `-3`; `alex-jetson` is left out. The master also runs the control plane,
 Kaptain's scheduler and decider, the runner and `kexp.py` itself: its measured load includes them.
+`KEXP_NODES` names other experiment nodes for a campaign, without relabelling the cluster: the pods
+then require one of those hostnames instead of the label, kexp measures and checks those nodes,
+and `meta.json` records `nodes_named` (`node_cores` lists them). `alex-jetson` can be one of them;
+the NetworkPolicy below does not hold there, which the stress-ng pods, without network, do not need.
 
 Seeded policies key on `kaptain.io/task-id = <experiment>/<pod>`, so the same seed places the
 same pods the same way in every run.
