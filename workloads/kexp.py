@@ -38,7 +38,8 @@ SAMPLE_TIMEOUT_S = 30  # a busy kubelet answers late, not never: the master's to
 IMBALANCE_STEP_S = 5
 WORKLOAD = "kaptain.io/workload"
 # KEXP_SCHEDULER=default-scheduler: Kubernetes places the pods, not Kaptain's plugin. KEXP_PIN=<node>:
-# the default scheduler on that node only, to measure each task on each node.
+# the default scheduler on that node only, to measure each task on each node. KEXP_NODES="<node> ...":
+# the experiment nodes, named for a campaign instead of labelled, to run on another set of machines.
 DEFAULT_SCHEDULER = "default-scheduler"
 # stress-ng --metrics-brief: "stressor bogo-ops real-time usr-time sys-time ..." for the stressor run.
 STRESSOR_LINE = re.compile(r"\]\s+(?:cpu|vm|hdd)\s+\d+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)")
@@ -118,6 +119,7 @@ def manifests(name, namespace="default"):
     memory = experiment["resources"].get("memory_mib")
     pin = os.environ.get("KEXP_PIN")
     scheduler = DEFAULT_SCHEDULER if pin else os.environ.get("KEXP_SCHEDULER")
+    listed = listed_nodes()
 
     pods = []
     for index, (arrival, kind) in enumerate(zip(times, kinds)):
@@ -126,7 +128,12 @@ def manifests(name, namespace="default"):
         pod["metadata"]["namespace"] = namespace
         if scheduler:
             pod["spec"]["schedulerName"] = scheduler
-        if pin:  # on top of the experiment-node selector, which stays
+        if listed:  # the named nodes instead of the labelled ones
+            del pod["spec"]["nodeSelector"][EXPERIMENT_NODE]
+            pod["spec"]["affinity"] = {"nodeAffinity": {"requiredDuringSchedulingIgnoredDuringExecution": {
+                "nodeSelectorTerms": [{"matchExpressions": [
+                    {"key": "kubernetes.io/hostname", "operator": "In", "values": listed}]}]}}}
+        if pin:  # on top of the experiment-node selector or the named nodes, which stay
             pod["spec"]["nodeSelector"]["kubernetes.io/hostname"] = pin
         # train, valid or eval: Kaptain is frozen in valid and eval (bridge/strategies/kaptain.py)
         if os.environ.get("KEXP_PHASE"):
@@ -170,12 +177,24 @@ def quantity(text):
     return float(number) * SUFFIXES[suffix]
 
 
+def listed_nodes():
+    return os.environ.get("KEXP_NODES", "").split()
+
+
 def worker_nodes():
-    """The nodes experiments run on and measure, with what they can allocate: chosen by label,
-    which the pods select too."""
-    nodes = json.loads(kubectl("get", "nodes", "-l", f"{EXPERIMENT_NODE}=true", "-o", "json"))["items"]
-    if not nodes:
-        raise RuntimeError(f"no node labelled {EXPERIMENT_NODE}=true")
+    """The nodes experiments run on and measure, with what they can allocate: those KEXP_NODES
+    names, or else those labelled, which the pods select too."""
+    listed = listed_nodes()
+    if listed:
+        nodes = [n for n in json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
+                 if n["metadata"]["name"] in listed]
+        missing = sorted(set(listed) - {n["metadata"]["name"] for n in nodes})
+        if missing:
+            raise RuntimeError(f"KEXP_NODES: no node {', '.join(missing)}")
+    else:
+        nodes = json.loads(kubectl("get", "nodes", "-l", f"{EXPERIMENT_NODE}=true", "-o", "json"))["items"]
+        if not nodes:
+            raise RuntimeError(f"no node labelled {EXPERIMENT_NODE}=true")
     return {n["metadata"]["name"]: n["status"]["allocatable"] for n in nodes}
 
 
@@ -508,6 +527,7 @@ def run(name, run_id, namespace, owner, out_root):
         "policy_version": env["POLICY_VERSION"],
         "images": images,
         "node_cores": node_cores,
+        "nodes_named": bool(listed_nodes()),  # by KEXP_NODES, not by their label
         "node_memory_bytes": node_memory,
         "started_at": now(),
         "status": "aborted",

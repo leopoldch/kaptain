@@ -7,7 +7,7 @@ name: Run campaign
 # training runs on the validation seeds 500 and 501. default-scheduler leaves the pods to
 # Kubernetes, pin-<node> to Kubernetes on that node only (each task measured on each node). One
 # report per run in the summary, then a table per experiment of the evaluated runs (ktable.py),
-# all the raw files in one artifact.
+# all the raw files in one artifact. nodes runs them on other machines than the labelled ones.
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ on:
         default: even-5s even-10s
         type: string
       strategies:
-        description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm] sets its weights and Phi; default-scheduler; pin-<node>
+        description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm|-placebo] sets its weights and Phi; default-scheduler; pin-<node>
         required: true
         default: kaptain earliest-finish shortest-estimate least-allocated default-scheduler
         type: string
@@ -41,6 +41,11 @@ on:
         description: Kaptain frozen on the validation seeds 500 501 every that many training runs (0 for never)
         required: true
         default: "0"
+        type: string
+      nodes:
+        description: Experiment nodes, separated by spaces, instead of those labelled kaptain.io/experiment-node=true (empty for those)
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -72,6 +77,7 @@ jobs:
           TRAIN_RUNS: ${{ inputs.train_runs }}
           REPLICATES: ${{ inputs.replicates }}
           VALIDATE_EVERY: ${{ inputs.validate_every }}
+          KEXP_NODES: ${{ inputs.nodes }}  # every kexp call of this step: the runs and their cleanup
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies use it
           RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: |
