@@ -34,9 +34,9 @@ class Variant(unittest.TestCase):
         both = get_strategy("kaptain-pod-ef")
         self.assertTrue(both.pod and both.residual)
         self.assertFalse(get_strategy("kaptain-ef").pod)
-        for name in ("kaptain-b0.5-pod", "kaptain-l4-pod"):
-            with self.assertRaises(ValueError):
-                get_strategy(name)
+        self.assertEqual(get_strategy("kaptain-b0.5-pod").beta, 0.5)
+        with self.assertRaises(ValueError):
+            get_strategy("kaptain-l4-pod")
 
 
 class Learning(unittest.TestCase):
@@ -58,6 +58,16 @@ class Learning(unittest.TestCase):
         self.assertEqual(len(steps), 3)
         self.assertIn('"delay_task_s": 5', steps[1])
         self.assertIn('"discount": 0.0', steps[1])
+
+    def test_beta_adds_the_cpu_of_the_pod_placed(self):
+        # Same seed, same run: the rewards differ by beta x the pod's CPU-seconds, per 100.
+        episode = [decision("p0", 0, "a"), decision("p1", 10, "a")]
+        ended, used = {"p0": 30, "p1": 15}, [("run", 0, 30, 12.0, True, "p0"), ("run", 10, 15, 2.0, True, "p1")]
+        plain = get_strategy("kaptain-pod").placed(episode, used, ended, 60)
+        weighed = get_strategy("kaptain-b2-pod").placed(episode, used, ended, 60)
+        self.assertEqual([step["cpu"] for step in weighed], [12.0, 2.0])
+        for a, b, e in zip(plain, weighed, (12.0, 2.0)):
+            self.assertAlmostEqual(a["reward"] - b["reward"], 2 * e / 100, places=5)
 
 
 if __name__ == "__main__":

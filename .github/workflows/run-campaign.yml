@@ -20,7 +20,7 @@ on:
         default: even-5s even-10s
         type: string
       strategies:
-        description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm|-placebo][-ef] sets its weights, Phi and earliest-finish prior, kaptain-pod[-ef] rewards each decision for its own pod; default-scheduler; pin-<node>
+        description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm|-placebo][-ef] sets its weights, Phi and earliest-finish prior, kaptain[-b<beta>]-pod[-ef] rewards each decision for its own pod; default-scheduler; pin-<node>
         required: true
         default: kaptain earliest-finish shortest-estimate least-allocated default-scheduler
         type: string
