@@ -10,8 +10,8 @@ _REGISTRY = {s.name: s for s in (DummyRandom, EarliestFinish, FixedSlowedEstimat
 
 
 def get_strategy(name: str) -> SchedulingStrategy:
-    if VARIANT.fullmatch(name):  # kaptain, kaptain-b0.5, kaptain-l1-llm, ...: its weights are in the name
+    if VARIANT.fullmatch(name):  # kaptain, kaptain-b0.5, kaptain-l1-llm, kaptain-pod, ...: its weights and its reward are in the name
         return Kaptain(name)
     if name not in _REGISTRY:
-        raise ValueError(f"unknown strategy {name!r}, known: {sorted(_REGISTRY)} and kaptain[-b<beta>][-l<lambda>[-llm|-placebo]][-ef]")
+        raise ValueError(f"unknown strategy {name!r}, known: {sorted(_REGISTRY)} and kaptain[-b<beta>][-l<lambda>[-llm|-placebo]][-pod[-alone]][-ef]")
     return _REGISTRY[name]()
