@@ -9,7 +9,8 @@ mkdir -p "$(dirname -- "$summary")"
 read -ra experiments <<< "$EXPERIMENTS"
 read -ra strategies <<< "$STRATEGIES"
 read -ra seeds <<< "$SEEDS"
-for experiment in "${experiments[@]}"; do
+read -ra train_on <<< "${TRAIN_ON:-}"
+for experiment in "${experiments[@]}" ${TRAIN_ON:-}; do
   [[ -f workloads/experiments/$experiment.toml && $experiment =~ ^[a-z0-9-]+$ ]] || { echo "unknown experiment: $experiment"; exit 1; }
 done
 for strategy in "${strategies[@]}"; do
@@ -22,9 +23,18 @@ done
 [[ $REPLICATES =~ ^[1-9][0-9]*$ ]] || { echo "bad replicates: $REPLICATES"; exit 1; }
 [[ $VALIDATE_EVERY =~ ^[0-9]+$ ]] || { echo "bad validate_every: $VALIDATE_EVERY"; exit 1; }
 
+# A group is what one deployment is evaluated on: each experiment alone, trained on itself. With
+# TRAIN_ON, every experiment at once: one deployment trains on TRAIN_ON's experiments in turn,
+# then is evaluated on each, so one policy is measured under every load, some never trained on.
+groups=("${experiments[@]}")
+(( ${#train_on[@]} )) && groups=("${experiments[*]}")
+
 failed=0
 runs=()
-for experiment in "${experiments[@]}"; do
+for group in "${groups[@]}"; do
+  read -ra evaluated <<< "$group"
+  trained=("${evaluated[@]}")
+  (( ${#train_on[@]} )) && trained=("${train_on[@]}")
   for strategy in "${strategies[@]}"; do
     # Kubernetes alone needs no deployment; only Kaptain's policies are trained several times.
     scheduler='' pin='' deploy=1 replicates=('')
@@ -37,7 +47,7 @@ for experiment in "${experiments[@]}"; do
       # Before the deployment: its own check refuses while pods of a killed run remain.
       python3 workloads/kexp.py cleanup
       if (( deploy )) && ! KAPTAIN_SEED=${replicate:-7} bash deploy-policy.sh "$strategy"; then
-        runs+=("| $experiment | $strategy | ${replicate:-–} | all | all | deploy failed |")
+        runs+=("| $group | $strategy | ${replicate:-–} | all | all | deploy failed |")
         failed=1
         continue
       fi
@@ -47,15 +57,17 @@ for experiment in "${experiments[@]}"; do
       plan=()
       if [[ $strategy == kaptain* || $strategy == shortest-estimate || $strategy == earliest-finish || $strategy == slowed-estimate* ]]; then
         for ((i = 1; i <= TRAIN_RUNS; i++)); do
-          plan+=("train $((999 + i))")
+          plan+=("${trained[(i - 1) % ${#trained[@]}]} train $((999 + i))")
           if [[ $strategy == kaptain* ]] && (( VALIDATE_EVERY && i % VALIDATE_EVERY == 0 )); then
-            plan+=("valid 500 $i" "valid 501 $i")
+            for experiment in "${evaluated[@]}"; do plan+=("$experiment valid 500 $i" "$experiment valid 501 $i"); done
           fi
         done
       fi
-      for seed in "${seeds[@]}"; do plan+=("eval $seed"); done
+      for experiment in "${evaluated[@]}"; do
+        for seed in "${seeds[@]}"; do plan+=("$experiment eval $seed"); done
+      done
       for step in "${plan[@]}"; do
-        read -r phase seed checkpoint <<< "$step"
+        read -r experiment phase seed checkpoint <<< "$step"
         python3 workloads/kexp.py cleanup
         # A namespace name takes no dot: kaptain-b0.5 becomes kaptain-b0-5 there.
         if KEXP_PHASE=$phase KEXP_SEED=$seed KEXP_REPLICATE=$replicate KEXP_SCHEDULER=$scheduler KEXP_PIN=$pin \

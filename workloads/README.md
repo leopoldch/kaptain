@@ -18,7 +18,10 @@ python3 kexp.py cleanup                   # delete namespaces left by killed run
 
 On GitHub: **Actions → Run experiment → Run workflow**, choose the experiment and optionally a
 policy to deploy first. The report lands in the run summary, the raw files in the artifact.
-**Actions → Run campaign** does the same for several policies and seeds in one go, and
+**Actions → Run campaign** does the same for several policies and seeds in one go. Its
+`train_on` (`TRAIN_ON` for `campaign.sh`) deploys each policy once for all the experiments: the
+training runs take `train_on`'s experiments in turn, then the policy is evaluated on every
+experiment, so one Kaptain is measured under several loads, also loads it never trained on.
 `KEXP_SEED=8 python3 kexp.py run drs-even` replaces the file's seed by hand, and
 `python3 ktable.py runs/` sums up downloaded runs: per experiment and policy, the mean over
 seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.
@@ -63,7 +66,7 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 | `packing-random` | Christensen et al. 2025: pods with random CPU and RAM | ranges and Poisson rate are ours |
 | `decision-cost` | Zhou et al. 2026: no-op pods | shape of the September pilot |
 | `web` | Zhou et al. 2026: NGINX services | 60 s lifetime, Poisson rate are ours |
-| `even-10s`, `even-5s`, `even-2s` | `drs-even`, one pod every 10, 5 or 2 s: contention matters | the faster arrivals are ours |
+| `even-10s`, `even-5s`, `even-3s`, `even-2s` | `drs-even`, one pod every 10, 5, 3 or 2 s: contention matters | the faster arrivals are ours |
 | `calibration` | each task alone, 5 of each, 240 s apart, 500m: with `KEXP_PIN`, one node at a time | ours |
 | `calibration-load` | the same under contention: 4 of each, 10 s apart, on one node at a time | ours |
 | `smoke` | pipeline check only | — |
