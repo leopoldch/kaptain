@@ -44,7 +44,8 @@ All in `bridge/strategies/`, one file each.
 | `kaptain` | chosen by a network trained with PPO, which scores any number of nodes |
 
 Kaptain's suffixes: `-b0.5` adds the CPU used to the cost, `-l4` adds a shaping bonus,
-`-llm` takes that bonus from an LLM, `-placebo` draws it at random, and `-ef` starts the
+`-llm` takes that bonus from an LLM, `-placebo` draws it at random, `-pod` rewards each
+decision for the pod it placed instead of for the whole cluster, and `-ef` starts the
 network from earliest-finish.
 
 ## Timers

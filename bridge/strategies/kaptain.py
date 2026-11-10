@@ -28,6 +28,13 @@
 # 4. Between two runs kexp settles the policy: the run that ended is learned from before the next
 #    one starts, so a frozen run uses one model throughout; a valid run starts from the
 #    training's runtime estimates, and the training goes on from them afterwards.
+# 5. With -pod, a decision is rewarded for the pod it placed, not for the whole cluster:
+#    r = -(d + s) / 100, d the seconds from the decision to the end of its pod, s the seconds it
+#    cost the pods already on its node: s = L - B, L the time those pods still ran after the
+#    decision, B what a network expects them to run when no pod joins them, learned on the nodes
+#    the decisions did not choose. Nothing is discounted and nothing carried to the next decision:
+#    the advantage is r - V(s). Under 3, every decision gets the cost of every unfinished pod,
+#    in which its own node weighs little. kaptain-pod, kaptain-pod-ef; neither -b nor -l.
 # This is a new variant: Kaptain trained with one-step A2C, discounted per decision, until
 # f53745f. Estimates and weights live in the decider's memory: a redeployment starts from
 # scratch. Every update logs the weights (kaptain_checkpoint), and kexp collects them.
@@ -63,7 +70,7 @@ MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
-VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?(-ef)?")  # -llm, -placebo only with a lambda: they give the Phi of the bonus
+VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?(-pod)?(-ef)?")  # -llm, -placebo only with a lambda: they give the Phi of the bonus
 TEMPERATURE_S = 20.0  # of the earliest-finish prior (-ef): nodes this many seconds apart in finish time, e times as likely
 FIXED_SLOWDOWN = 1.0  # slowed-estimate-fixed: a node fully booked runs a pod twice as long (learned on campaign 41251873008: 0.6-0.95 on the 1-core workers, 0.3 on the 8-core one)
 SLOWDOWN_GRID = [i / 20 for i in range(61)]  # slowed-estimate-learned: the slowdowns tried, 0 to 3
@@ -78,6 +85,8 @@ EPOCHS = 8  # passes over an episode at each update
 CLIP = 0.2  # PPO's bound on the change of a decision's probability
 MAX_GRADIENT = 1.0  # norm
 FLAT = 0.05  # probabilities this close together: the policy does not tell the nodes apart
+LEFT_KEPT = 30000  # -pod: the nodes not chosen that B learns from, about 100 runs
+LEFT_STEPS = 20  # -pod: B's gradient steps at each update
 # stress-ng --metrics-brief: "stressor bogo-ops real-time usr-time sys-time ..." (as workloads/kexp.py reads it).
 STRESSOR_LINE = re.compile(r"\]\s+(?:cpu|vm|hdd)\s+\d+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)")
 PROMPT = """You judge a Kubernetes cluster that runs batch tasks. From its state, score from 0 to
@@ -251,6 +260,7 @@ class Cluster:
         self.cpu = ThreadPoolExecutor(max_workers=2) if cpu else None
         self.reading = []  # the CPU reads not finished yet
         self.used = collections.deque(maxlen=20000)  # (namespace, started, finished, CPU-seconds, measured)
+        self.ended = collections.deque(maxlen=20000)  # (namespace, pod, finished) of every pod that succeeded
         self.lock = threading.Lock()
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -333,6 +343,7 @@ class Cluster:
             self.learn_alone(task, node, pod, ended - started, ran)
         else:
             self.estimates.update(task, node, ended - started)
+        self.ended.append((pod["metadata"].get("namespace"), pod["metadata"].get("name"), ended))
         if self.cpu:
             self.reading = [f for f in self.reading if not f.done()]
             self.reading.append(self.cpu.submit(
@@ -513,6 +524,19 @@ def discounted(samples, start, end, kappa):
     return total
 
 
+def placed_costs(episode, ended, end):
+    """-pod. Per decision: the seconds from it to the end of its pod, and for each of its nodes the
+    seconds the pods placed there before it still ran after it. ended: pod -> when it finished;
+    a pod that did not succeed counts until end, the end of the run."""
+    finish = [ended.get(state["pod"], end) for state in episode]
+    costs = []
+    for k, state in enumerate(episode):
+        left = [sum(finish[j] - state["time"] for j in range(k)
+                    if episode[j]["node"] == node and finish[j] > state["time"]) for node in state["nodes"]]
+        costs.append((finish[k] - state["time"], left))
+    return costs
+
+
 class Kaptain(SchedulingStrategy):
     def __init__(self, name="kaptain", half_life_s=HALF_LIFE_S, lr=3e-3, hidden=16, entropy=0.01, seed=7):
         import torch  # here, so that the other strategies never load it
@@ -532,7 +556,10 @@ class Kaptain(SchedulingStrategy):
         self.random = random.Random(self.seed)  # breaks the ties of a frozen policy
         # Its own generator: drawing Phi leaves the policy's sampling as it is without it.
         self.placebo = random.Random(self.seed + 1) if weights[3] == "-placebo" else None
-        self.residual = bool(weights[4])  # -ef: the network corrects earliest-finish instead of scoring alone
+        self.pod = bool(weights[4])  # -pod: each decision rewarded for the pod it placed
+        if self.pod and (self.beta or self.lam):
+            raise ValueError(f"{name}: -pod rewards a decision for its own pod, without -b or -l")
+        self.residual = bool(weights[5])  # -ef: the network corrects earliest-finish instead of scoring alone
 
         def embedding():
             return nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
@@ -545,9 +572,13 @@ class Kaptain(SchedulingStrategy):
         if self.residual:  # a correction of zero: untrained, the policy is earliest-finish
             nn.init.zeros_(self.net["score"][-1].weight)
             nn.init.zeros_(self.net["score"][-1].bias)
+        if self.pod:  # B: from a node's vector, the time left of the pods on it, per 100 s
+            self.net["left"] = nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 1))
+            self.others = collections.deque(maxlen=LEFT_KEPT)  # (vector, time left / 100) of the nodes not chosen
         # The learner trains its own copy in the background, then hands its weights over.
         self.trained = copy.deepcopy(self.net)
         self.optimizer = torch.optim.Adam(self.trained.parameters(), lr=lr)
+        self.left_optimizer = torch.optim.Adam(self.trained["left"].parameters(), lr=lr) if self.pod else None
         self.learner = ThreadPoolExecutor(max_workers=1)  # one episode at a time, in order
         self.episodes = 0
         with torch.no_grad():  # the first pass is slow; not on a decision
@@ -629,6 +660,8 @@ class Kaptain(SchedulingStrategy):
                 state.update(action=action, log_probability=float(torch.log(probabilities[action])))
                 self.episode.append(state)
             chosen = snapshot["nodes"][action]["name"]
+            if not frozen:  # -pod finds the pod again when it has finished, and those placed before it on each node
+                state.update(pod=pod.get("name"), node=chosen, nodes=[n["name"] for n in snapshot["nodes"]])
             spread = float(probabilities.max() - probabilities.min())
             # What the policy thought of every node, also when frozen: an argmax hides how close the others were.
             log.info(json.dumps({"event": "kaptain_decision", "strategy": self.name, "seed": self.seed,
@@ -683,7 +716,8 @@ class Kaptain(SchedulingStrategy):
                 read.result()
             with self.cluster.lock:
                 used = [u for u in self.cluster.used if u[0] == episode[0]["namespace"]]
-            self.learn(episode, samples, used, end)
+                ended = {pod: finished for namespace, pod, finished in self.cluster.ended if namespace == episode[0]["namespace"]}
+            self.learn(episode, samples, used, ended, end)
         except Exception as error:  # an executor keeps exceptions to itself: settle raises them
             self.failure = self.failure or f"{type(error).__name__}: {error}"
             log.exception(json.dumps({"event": "kaptain_learn_failed", "error": str(error)}))
@@ -710,11 +744,39 @@ class Kaptain(SchedulingStrategy):
                         "delay": delay, "cpu": cpu, "bonus": bonus, "phi": phi, "analytic": state["analytic"]})
         return out
 
-    def learn(self, episode, samples, used, end):
+    def placed(self, episode, ended, end):
+        """-pod. Per decision: r = -(d + s) / 100, ending there (discount 0). d: its pod's seconds.
+        s = L - B: the seconds the pods already on its node still ran, minus what B expects of
+        them when no pod joins. B first learns from this run's nodes not chosen, then is read."""
+        torch, net = self.torch, self.trained
+        costs = placed_costs(episode, ended, end)
+        missing = sum(1 for state in episode if state["pod"] not in ended)
+        if missing:
+            log.warning(json.dumps({"event": "kaptain_pods_unfinished", "namespace": episode[0]["namespace"], "pods": missing}))
+        for state, (_, left) in zip(episode, costs):
+            self.others.extend((state["rows"][i], seconds / SCALE) for i, seconds in enumerate(left) if i != state["action"])
+        if self.others:  # none when every decision had a single node
+            rows, target = torch.stack([row for row, _ in self.others]), torch.tensor([t for _, t in self.others])
+            for _ in range(LEFT_STEPS):
+                loss = torch.nn.functional.smooth_l1_loss(net["left"](rows).squeeze(1), target)
+                self.left_optimizer.zero_grad()
+                loss.backward()
+                self.left_optimizer.step()
+        with torch.no_grad():
+            expected = (net["left"](torch.stack([state["rows"][state["action"]] for state in episode])).squeeze(1) * SCALE).tolist()
+        out = []
+        for state, (delay, left), b in zip(episode, costs, expected):
+            slowed = left[state["action"]] - b
+            out.append({"reward": -(delay + slowed) / SCALE, "discount": 0.0, "delay": delay, "slowed": slowed,
+                        "cpu": 0.0, "bonus": 0.0, "phi": 0.0, "analytic": state["analytic"]})
+        return out
+
+    def learn(self, episode, samples, used, ended, end):
         """PPO on one episode: generalized advantages, normalized; clipped policy steps and a Huber
-        critic, a few epochs over the episode, the actor's and the critic's gradients clipped apart."""
+        critic, a few epochs over the episode, the actor's and the critic's gradients clipped apart.
+        With -pod every discount is 0: the advantage of a decision is its reward minus the critic's."""
         torch, net, started = self.torch, self.trained, time.perf_counter()
-        steps = self.transitions(episode, samples, used, end)
+        steps = self.placed(episode, ended, end) if self.pod else self.transitions(episode, samples, used, end)
         parts = {"actor": [*net["embed"].parameters(), *net["score"].parameters()],
                  "critic": [*net["critic_embed"].parameters(), *net["critic"].parameters()]}
         with torch.no_grad():
@@ -763,6 +825,7 @@ class Kaptain(SchedulingStrategy):
             log.info(json.dumps({"event": "kaptain_step", "strategy": self.name, "namespace": state["namespace"],
                                  "reward": round(step["reward"], 4), "delay_task_s": round(step["delay"], 1),
                                  "cpu_s": round(step["cpu"], 1), "phi": step["phi"], "phi_analytic": round(step["analytic"], 4),
+                                 **({"slowed_s": round(step["slowed"], 1)} if self.pod else {}),
                                  "bonus": round(step["bonus"], 4),
                                  "discount": round(step["discount"], 4), "value": round(v, 4),
                                  "advantage": round(a, 4)}))
@@ -770,7 +833,7 @@ class Kaptain(SchedulingStrategy):
                              "namespace": episode[0]["namespace"], "episode": self.episodes, "decisions": len(episode),
                              "return": round(float(returns[0]), 3), "last_reward": round(steps[-1]["reward"], 3),
                              # The run's cost without the bonus, each part discounted to its decision: return is the critic's target.
-                             "cost": round(sum((s["delay"] + self.beta * s["cpu"]) / SCALE for s in steps), 3),
+                             "cost": round(sum(s["bonus"] - s["reward"] for s in steps), 3),
                              "bonus": round(sum(s["bonus"] for s in steps), 3),
                              "llm_failed": sum(1 for s in steps if s["phi"] is None),
                              "policy_loss": round(policy_loss.item(), 4), "value_loss": round(value_loss.item(), 4),
