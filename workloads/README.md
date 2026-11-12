@@ -46,9 +46,11 @@ memory_mib = [64, 1024]  # optional, otherwise the manifest's value
 Optional keys, for the DRS reproduction: `scheduler = "default-scheduler"` (or `--scheduler` on
 the command line) submits the same pods to Kubernetes' own scheduler; `node = "<node>"` pins every
 pod with `nodeName`, bypassing every scheduler, to profile a workload (calibration only, never a
-placement result: `meta.json` says strategy `pinned`); `hold_s` keeps recording that long after the start, for idle runs with
+placement result: `meta.json` says strategy `pinned`); `--node <node>` does the same from the
+command line, and `calibration = true` refuses to run without a node; `hold_s` keeps recording that long after the start, for idle runs with
 `count = 0`; `[network.egress]` (`cidr`, `port`) lets the pods reach one address despite the
-deny-all policy.
+deny-all policy. `DRS_NET_SERVER=<host>:<port>` replaces that address, and the one the `net` pods
+connect to, on a cluster whose DRS network server is elsewhere.
 
 | Experiment | Taken from | Departures |
 |---|---|---|

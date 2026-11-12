@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import copy
+import ipaddress
 import csv
 import json
 import os
@@ -21,6 +22,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --server=https://10.50.0.1:6443")
+# host:port of the DRS network server. Set, it replaces every declared egress and the net pods'
+# DRS_NET_SERVER, so the experiments run on another cluster unchanged.
+NET_SERVER = os.environ.get("DRS_NET_SERVER")
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 EXPERIMENT_LABEL = "kaptain.io/experiment"
@@ -87,6 +91,14 @@ def load(name):
         if not (isinstance(egress, dict) and isinstance(egress.get("cidr"), str)
                 and isinstance(egress.get("port"), int)):
             raise ValueError(f"{name}: [network.egress] must be one table with a cidr string and a port integer")
+        if NET_SERVER:
+            # An IP address: the egress rule is a NetworkPolicy ipBlock, and the pods have no DNS.
+            host, port = NET_SERVER.rsplit(":", 1)
+            try:
+                ipaddress.IPv4Address(host)
+            except ValueError:
+                raise ValueError(f"DRS_NET_SERVER={NET_SERVER}: the host must be an IPv4 address") from None
+            experiment["network"]["egress"] = {"cidr": f"{host}/32", "port": int(port)}
     return experiment
 
 
@@ -101,8 +113,13 @@ def read_manifest(kind):
     return json.loads(kubectl("create", "--dry-run=client", "-o", "json", "-f", "-", stdin=yaml))
 
 
-def manifests(name, namespace="default", scheduler=None):
+def manifests(name, namespace="default", scheduler=None, node=None):
     experiment = load(name)
+    if node:
+        experiment["node"] = node
+    if experiment.get("calibration") and not experiment.get("node"):
+        # A calibration run left to a scheduler would profile nothing: refuse it.
+        raise ValueError(f"{name} is a calibration experiment: give the node with --node")
     # The kube-scheduler arm submits the same pods to the cluster's own default-scheduler.
     scheduler = scheduler or experiment.get("scheduler")
     rng = random.Random(experiment["seed"])
@@ -133,6 +150,11 @@ def manifests(name, namespace="default", scheduler=None):
         for limit in pod["spec"]["containers"][0]["resources"].values():
             limit.update(size)  # requests = limits, as in DRS
 
+        if NET_SERVER:
+            for container in pod["spec"]["containers"]:
+                for variable in container.get("env", []):
+                    if variable["name"] == "DRS_NET_SERVER":
+                        variable["value"] = NET_SERVER
         if scheduler:
             pod["spec"]["schedulerName"] = scheduler
         if experiment.get("node"):
@@ -467,8 +489,8 @@ def collect(out, namespace, started_at):
     (out / "decisions.jsonl").write_text("".join(ours))
 
 
-def run(name, run_id, namespace, owner, out_root, scheduler=None):
-    experiment, pods = manifests(name, namespace, scheduler)
+def run(name, run_id, namespace, owner, out_root, scheduler=None, node=None):
+    experiment, pods = manifests(name, namespace, scheduler, node)
     scheduler = scheduler or experiment.get("scheduler") or "kaptain-scheduler"
     nodes = worker_nodes()
     env = scheduler_env()
@@ -680,12 +702,12 @@ def list_experiments():
         print(f"{path.stem:<16} {count:>3} pods  {experiment['description']}")
 
 
-def print_manifests(name, scheduler=None):
-    _, pods = manifests(name, scheduler=scheduler)
+def print_manifests(name, scheduler=None, node=None):
+    _, pods = manifests(name, scheduler=scheduler, node=node)
     print(json.dumps({"apiVersion": "v1", "kind": "List", "items": pods}, indent=1))
 
 
-def run_and_report(name, out_root, scheduler=None):
+def run_and_report(name, out_root, scheduler=None, node=None):
     run_id = os.environ.get("KEXP_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     namespace = f"kexp-{run_id}"
     owner = uuid.uuid4().hex
@@ -694,7 +716,7 @@ def run_and_report(name, out_root, scheduler=None):
     heart = threading.Thread(target=heartbeat_until, args=(stop, owner), daemon=True)
     heart.start()
     try:
-        out, meta = run(name, run_id, namespace, owner, out_root, scheduler)
+        out, meta = run(name, run_id, namespace, owner, out_root, scheduler, node)
         text = report(out, meta)
         (out / "report.md").write_text(text)
         print(text)
@@ -714,15 +736,16 @@ def main():
     parser.add_argument("experiment", nargs="?")
     parser.add_argument("--out", type=Path, default=Path("results"))
     parser.add_argument("--scheduler", help="override the experiment's schedulerName, e.g. default-scheduler")
+    parser.add_argument("--node", help="pin every pod to this node, for calibration experiments")
     args = parser.parse_args()
 
     if args.command == "list":
         return list_experiments()
     if args.command == "manifests":
-        return print_manifests(args.experiment, args.scheduler)
+        return print_manifests(args.experiment, args.scheduler, args.node)
     if args.command == "cleanup":
         return delete_stale_namespaces()
-    if not run_and_report(args.experiment, args.out, args.scheduler):
+    if not run_and_report(args.experiment, args.out, args.scheduler, args.node):
         sys.exit(1)
 
 
