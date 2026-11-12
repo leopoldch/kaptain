@@ -467,6 +467,9 @@ def check_idle(workers):
     for pod in json.loads(kubectl("get", "pods", "--all-namespaces", "-o", "json"))["items"]:
         if pod["metadata"]["namespace"] == "kube-system" or pod["status"]["phase"] in ("Succeeded", "Failed"):
             continue
+        # Node agents (CNI, exporters) run on every node in every run: not other work.
+        if any(owner.get("kind") == "DaemonSet" for owner in pod["metadata"].get("ownerReferences", [])):
+            continue
         if pod["spec"].get("nodeName") in workers or pod["spec"].get("schedulerName") == "kaptain-scheduler":
             busy.append(f"{pod['metadata']['namespace']}/{pod['metadata']['name']}")
     if busy:

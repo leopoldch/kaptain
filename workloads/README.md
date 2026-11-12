@@ -108,8 +108,8 @@ make it delete another run's. It refuses to start while any labelled namespace e
 may be another run's. A live run renews a `kaptain.io/heartbeat` annotation every minute;
 `kexp.py cleanup`, which the workflow calls before deploying a policy, deletes only the
 namespaces silent for more than 5 minutes, those of killed runs. A run also refuses to start
-unless the experiment nodes are idle: no pod outside `kube-system` on one of them, and no pod
-using `kaptain-scheduler`. Background load, if ever wanted, has to be part of the experiment.
+unless the experiment nodes are idle: no pod outside `kube-system` on one of them, apart from
+DaemonSet pods (node agents such as the CNI), and no pod using `kaptain-scheduler`. Background load, if ever wanted, has to be part of the experiment.
 
 Experiments run on the nodes labelled `kaptain.io/experiment-node=true`, and only there: the pods
 select that label and tolerate the control-plane taint, and `kexp.py` measures and checks the

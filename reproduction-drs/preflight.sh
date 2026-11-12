@@ -40,11 +40,12 @@ for node in "${nodes[@]}"; do
   info "$node: $(k get node "$node" -o 'jsonpath={.status.nodeInfo.architecture}, {.status.allocatable.cpu} CPU, {.status.addresses[?(@.type=="InternalIP")].address}')"
 done
 check "no kexp namespace left (kexp.py cleanup)" "[[ -z \$(k get ns -l kaptain.io/experiment -o name) ]]"
+# As kexp.py: node agents (DaemonSet pods) and kube-system do not count.
 busy=$(k get pods -A --field-selector=status.phase!=Succeeded,status.phase!=Failed \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {.spec.nodeName}{"\n"}{end}' \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {.spec.nodeName} {.metadata.ownerReferences[0].kind}{"\n"}{end}' \
   | awk -v workers="${nodes[*]}" 'BEGIN { split(workers, w, " "); for (i in w) bench[w[i]] = 1 }
-                                  $1 !~ /^kube-system\// && ($2 in bench)')
-if [[ -z $busy ]]; then ok "no pod outside kube-system on the workers"; else fail "workers busy: $busy"; fi
+                                  $1 !~ /^kube-system\// && ($2 in bench) && $3 != "DaemonSet" { print $1 }')
+if [[ -z $busy ]]; then ok "no other work on the workers"; else fail "workers busy: $busy"; fi
 
 echo "== Kaptain"
 for name in kaptain-scheduler kaptain-decider; do
