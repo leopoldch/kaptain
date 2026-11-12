@@ -3,10 +3,8 @@
 # metrics recorded for every policy.
 #
 # The script ships as a ConfigMap, so no image has to be built for the arm64 and amd64
-# workers. kubectl runs inside the K3s container, so host files go through stdin:
-#   k -n kube-system create configmap drs-monitor-script --from-file=drs_monitor.py=/dev/stdin \
-#     --dry-run=client -o yaml < monitor/drs_monitor.py | k apply -f -
-#   k apply -f - < k8s/drs-monitor.yaml
+# workers. reproduction-drs/setup/apply-monitors.sh applies both, with the DRS_IFACES and
+# DRS_DISK of the cluster.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:

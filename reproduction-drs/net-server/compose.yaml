@@ -1,0 +1,18 @@
+# The server of DRS's Transmission app, outside Kubernetes like the authors' remote server.
+# Run it on a host the workers reach, bound to the address given in DRS_NET_SERVER:
+#   NET_SERVER_BIND=10.50.0.1 docker compose up -d && docker compose logs -f
+# run.sh copies its log into each run when it runs on the same host.
+services:
+  drs-net-server:
+    container_name: drs-net-server
+    image: python:3.12-alpine@sha256:1b668429b3511ab407d8e00648891631b0b1a4d7e15e3ca70f38ab5b91ad4ab4
+    network_mode: host
+    restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    command: [python3, -u, /srv/net_server.py, --bind, "${NET_SERVER_BIND:?set NET_SERVER_BIND}", --port, "${NET_SERVER_PORT:-5301}"]
+    volumes:
+      - ./net_server.py:/srv/net_server.py:ro
+    logging:
+      driver: json-file
+      options: { max-size: 20m, max-file: "5" }
