@@ -1,6 +1,6 @@
 # The DRS monitor (monitor/drs_monitor.py) on every worker. It runs in every arm of the DRS
 # reproduction, not only under the drs policy: the same load on the nodes, and the same six
-# metrics recorded for every policy (reproduction-drs/ECARTS-DRS.md, E22).
+# metrics recorded for every policy.
 #
 # The script ships as a ConfigMap, so no image has to be built for the arm64 and amd64
 # workers. kubectl runs inside the K3s container, so host files go through stdin:
@@ -20,8 +20,8 @@ spec:
     metadata:
       labels: { app: drs-monitor }
     spec:
-      # The experiment nodes, those kexp.py measures and its pods select: for the DRS bench, the
-      # 3 Proxmox VMs and the Pi. Neither the master nor alex-jetson is a candidate (ECARTS E01, E40).
+      # The experiment nodes, those kexp.py measures and its pods select: DRS's workers, never
+      # the master.
       nodeSelector: { kaptain.io/experiment-node: "true" }
       # The node's own network namespace: /proc/net/dev must list the node's interfaces.
       # /proc/stat, /proc/meminfo and /proc/diskstats are not namespaced.
@@ -57,7 +57,7 @@ spec:
             httpGet: { path: /state, port: 9101 }
             periodSeconds: 5
           # A request, no limit: DRS's monitor was a plain host process, and its cost is one of
-          # the measured results (E35). The request is the same in every arm.
+          # the measured results. The request is the same in every arm.
           resources:
             requests: { cpu: 20m, memory: 32Mi }
           securityContext:

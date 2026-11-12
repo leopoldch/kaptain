@@ -1,6 +1,6 @@
 # Network-intensive, DRS's Transmission (Jian et al. 2024; jolyonjian/apps:net-1.0,
 # network.py): the authors' client, unchanged but for the server address. Their server is not
-# published; ours (reproduction-drs/serveur-net) runs on the master, outside Kubernetes.
+# published; ours (reproduction-drs/net-server) runs on the master, outside Kubernetes.
 apiVersion: v1
 kind: Pod
 metadata:

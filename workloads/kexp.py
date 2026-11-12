@@ -319,7 +319,7 @@ def copy_logs(stop, args, path, since):
 
 
 # The DRS monitors (one sample per node every 0.5 s) and the decider (drs_decision and
-# drs_transition lines): both feed the DRS metrics of every arm (reproduction-drs, E22, E32).
+# drs_transition lines): both feed the DRS metrics of every arm.
 COPIED_LOGS = {
     "monitor.jsonl": ["-n", "kube-system", "-l", "app=drs-monitor", "--prefix", "--max-log-requests=10"],
     "decider.jsonl": ["-n", "kube-system", "deploy/kaptain-decider"],

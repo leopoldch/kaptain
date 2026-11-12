@@ -1,5 +1,5 @@
 # A one-step oracle for DRS's own objective: no learning, same inputs, same reward. It is the
-# positive control of the reproduction (reproduction-drs, nuit du 11 octobre): if it does not
+# positive control of the reproduction: if it does not
 # balance the bench better than Random and Round Robin, an agent trained on that reward is unlikely to.
 #
 # Like DRS, it breaks the Kaptain rule of pure functions on purpose: it reads the DRS monitors.
@@ -26,7 +26,7 @@ def predicted(node_states, index, pod_vector):
 
 class DRSGreedy(SchedulingStrategy):
     """Places each pod on the node that maximises DRS's reward one step ahead, from DRS's state:
-    the monitors' six percentages per node plus the pod's measured vector (E14)."""
+    the monitors' six percentages per node plus the pod's measured vector."""
 
     name = "drs-greedy"
 

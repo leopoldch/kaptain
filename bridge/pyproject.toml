@@ -11,7 +11,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Only the drs strategy imports these, lazily; the image installs them for every policy so
-# that all arms run the same decider image (reproduction-drs/ECARTS-DRS.md, E17).
+# that all arms run the same decider image.
 drs = [
     "torch==2.5.1",
     "numpy==2.1.3",

@@ -4,12 +4,12 @@
 #
 # Kept: a sample every 0.5 s, queues of 10, the state returned on request is the mean of the
 # last AT=2 samples, and the six metrics and their units (% for CPU and memory, KB/s for the
-# network card and the disk). Departures, numbered in reproduction-drs/ECARTS-DRS.md:
-#   E18 CPU from /proc/stat instead of `top` (same quantity: 100 - idle, iowait counted busy)
-#   E19 disk from /proc/diskstats (device level) instead of `sudo iotop` (process level)
-#   E20 network rate over the last period; the code's rate was an average since start
-#   E21 one sampling thread instead of four
-#   E22 HTTP/JSON instead of a raw socket, and every sample logged as a JSON line
+# network card and the disk). Departures:
+#   CPU from /proc/stat instead of `top` (same quantity: 100 - idle, iowait counted busy)
+#   disk from /proc/diskstats (device level) instead of `sudo iotop` (process level)
+#   network rate over the last period; the code's rate was an average since start
+#   one sampling thread instead of four
+#   HTTP/JSON instead of a raw socket, and every sample logged as a JSON line
 
 import json
 import os

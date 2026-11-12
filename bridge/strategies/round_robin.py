@@ -12,7 +12,7 @@ class RoundRobin(SchedulingStrategy):
     """The Round Robin arm of Jian et al. 2024 (DRS, section 5.3), kept a pure function: the
     n-th pod of a run, numbered by kexp in arrival order, goes to node n mod k of the bench.
 
-    The bench is fixed, DRS's action space (the monitors of DRS_CONFIG, sorted, E01): a node
+    The bench is fixed, DRS's action space (the monitors of DRS_CONFIG, sorted): a node
     Kubernetes filtered out is skipped for the next one, so the cycle does not shift."""
 
     name = "round-robin"

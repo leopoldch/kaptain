@@ -1,7 +1,7 @@
 # CPU-intensive, DRS's Video Scale (Jian et al. 2024; jolyonjian/apps:cpu-1.0, run.sh): the
 # authors' input.mp4 and their command, with a multi-arch FFmpeg 8 (the Pi is arm64, the VMs
-# amd64) instead of 3.3 for amd64 only. input.mp4 is copied to /opt/drs on each of the four
-# workers beforehand (reproduction-drs/PLAN.md, phase 3).
+# amd64) instead of 3.3 for amd64 only. input.mp4 is copied to /opt/drs on each worker
+# beforehand (reproduction-drs/setup/install-video.sh).
 apiVersion: v1
 kind: Pod
 metadata:

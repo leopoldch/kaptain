@@ -3,7 +3,7 @@
 #
 # This is the one strategy that breaks two Kaptain rules on purpose, because DRS is defined by
 # them: it keeps state (an online DQN) and it reads the cluster (the DRS monitors). Every
-# departure from the paper or the code is numbered in reproduction-drs/ECARTS-DRS.md (Exx).
+# departure from the paper or the code is stated where it is made.
 
 import json
 import logging
@@ -23,23 +23,23 @@ log = logging.getLogger("kaptain.decider")
 METRICS = ("cpu", "mem", "recv", "tran", "read", "write")
 
 DEFAULTS = {
-    # node name -> URL of its DRS monitor. Its sorted order is the action space (E01).
+    # node name -> URL of its DRS monitor. Its sorted order is the action space.
     "monitors": {},
     "monitor_timeout_s": 1.0,
     # Raw value that maps to 100 %. These are the code's constants (CPU x4, network 40 KB/s,
-    # disk 10240 KB/s); the calibration replaces them (E13).
+    # disk 10240 KB/s); the calibration replaces them.
     "caps": {"cpu": 25.0, "mem": 100.0, "recv": 40.0, "tran": 40.0, "read": 10240.0, "write": 10240.0},
-    # Workload label -> its six normalised values, measured alone on a node (E14). An unknown
+    # Workload label -> its six normalised values, measured alone on a node. An unknown
     # workload gets zeros, as /choose did for an unknown pod name.
     "pod_vectors": {},
     "workload_label": "kaptain.io/workload",
-    # paper: alpha * AvgUtil - beta * Imbalance (eq. 14); code: -(sum of the six std devs) (E11).
+    # paper: alpha * AvgUtil - beta * Imbalance (eq. 14); code: -(sum of the six std devs).
     "reward": "paper",
     "alpha": 1.0,
     "beta": 10.0,
     "weights": {m: 1 / 6 for m in METRICS},
     "step_delay_s": 5.0,
-    # The code's hyper-parameters (E10).
+    # The code's hyper-parameters.
     "batch_size": 32,
     "lr": 0.01,
     "epsilon": 0.9,  # probability of the greedy action, as in the code
@@ -86,7 +86,7 @@ def reward(node_states, config):
 
 
 class Agent:
-    """dqn.py's DQN, unchanged except that learn() is called (E09) and seeded (E15)."""
+    """dqn.py's DQN, unchanged except that learn() is called and seeded."""
 
     def __init__(self, n_states, n_actions, config):
         import numpy as np
@@ -98,7 +98,7 @@ class Agent:
         self.np, self.torch = np, torch
         # One generator per thread that draws: choose() runs on the decision thread, learn() on the
         # step threads, and a shared one would hand out its numbers in whatever order they ran.
-        # The states still come from live monitors, so a run is never replayed exactly (E15).
+        # The states still come from live monitors, so a run is never replayed exactly.
         self.choose_rng = np.random.RandomState(config["seed"])
         self.learn_rng = np.random.RandomState(config["seed"] + 1)
         self.config = config
@@ -165,7 +165,7 @@ class DRS(SchedulingStrategy):
         self.config = load_config()
         self.lock = threading.Lock()
         self.agent = None
-        # Pod UID -> node, so a retried pod keeps its action (E16). Not the task id, which is the
+        # Pod UID -> node, so a retried pod keeps its action. Not the task id, which is the
         # same in every run of an experiment: a second run would replay the first one's choices.
         self.actions = {}
         monitors = self.config["monitors"]
@@ -234,19 +234,19 @@ class DRS(SchedulingStrategy):
             "decision_ms": round(decision_ms, 3), "candidates": candidates,
         }))
         # The transition is measured whether or not Kubernetes can honour the action: DRS's own
-        # environment kept stepping too (E07).
+        # environment kept stepping too.
         threading.Thread(target=self.step, args=(task, nodes, state, action, pod_vector), daemon=True).start()
         return self.one_hot(chosen, candidates, task)
 
     def one_hot(self, chosen, candidates, task):
         if chosen not in candidates:
             # DRS's Filter would leave the pod pending; a Kaptain score cannot, so the plugin's
-            # explicit fallback takes over and is counted (E07).
+            # explicit fallback takes over and is counted.
             raise ValueError(f"DRS chose {chosen!r} for {task!r}, which Kubernetes filtered out")
         return one_hot(chosen, candidates)
 
     def step(self, task, nodes, state, action, pod_vector):
-        """K8sEnv.step + makeStep: wait, observe, reward, store, then learn (E09, E12)."""
+        """K8sEnv.step + makeStep: wait, observe, reward, store, then learn."""
         time.sleep(self.config["step_delay_s"])
         try:
             node_states, raws = self.observe(nodes, self.stepping)
@@ -258,7 +258,7 @@ class DRS(SchedulingStrategy):
 
         loss = None
         with self.lock:
-            # list(state): the code stored the very list it then overwrote, so s == s' (E12).
+            # list(state): the code stored the very list it then overwrote, so s == s'.
             self.agent.store(list(state), action, value, next_state)
             if self.agent.memory_counter > self.config["memory_capacity"]:
                 loss = self.agent.learn()
