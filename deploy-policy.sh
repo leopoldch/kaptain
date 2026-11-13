@@ -14,15 +14,17 @@ if [[ -n $(git status --porcelain -- bridge/) ]]; then
   echo 'Commit the policy code before deploying.' >&2
   exit 1
 fi
-container=kaptain-k3s
+# Our K3s runs in the Docker container kaptain-k3s; set these for another cluster.
+kubectl=${KEXP_KUBECTL:-docker exec -i kaptain-k3s kubectl --server=https://10.50.0.1:6443}
+ctr=${KAPTAIN_CTR:-docker exec -i kaptain-k3s ctr}
+master=${KAPTAIN_MASTER:-alex-master}
 run_id="deploy-${GITHUB_RUN_ID:-$(date -u +%s)}-${GITHUB_RUN_ATTEMPT:-1}"
 image="kaptain-decider:$commit-$run_id"
 changing=0
 recovery='Not needed'
 
 k() {
-  docker exec "$container" kubectl --server=https://10.50.0.1:6443 \
-    --request-timeout=20s -n kube-system "$@"
+  $kubectl --request-timeout=20s -n kube-system "$@" </dev/null
 }
 ready() {
   k rollout status "deployment/$1" --timeout=180s
@@ -49,12 +51,12 @@ cleanup_images() {
   done
   # Untagged leftovers of earlier decider builds (failed or superseded): ours by label only.
   docker image prune -f --filter label=kaptain.io/component=decider >/dev/null || return 1
-  images=$(docker exec "$container" ctr images list -q) || return 1
+  images=$($ctr images list -q </dev/null) || return 1
   for reference in $images; do
     old=${reference#docker.io/library/}
     [[ $old == kaptain-decider:* ]] || continue
     [[ $old == "$image" || $old == "$previous_image" ]] && continue
-    docker exec "$container" ctr images rm "$reference" || return 1
+    $ctr images rm "$reference" </dev/null || return 1
   done
 }
 finish() {
@@ -108,12 +110,12 @@ previous_image=${previous_image#docker.io/library/}
 [[ $decider_revision =~ ^[1-9][0-9]*$ && $scheduler_revision =~ ^[1-9][0-9]*$ ]]
 echo "Previous revisions: decider=$decider_revision scheduler=$scheduler_revision"
 
-# Build and check the image, then import it into K3s.
+# Build and check the image, then import it into the cluster's containerd.
 docker build --label "org.opencontainers.image.revision=$commit" --label kaptain.io/component=decider \
   -t "$image" bridge/
 docker run --rm --network none -e "STRATEGY=$strategy" "$image" \
   uv run --no-sync python -c 'import app; print(app.healthz())'
-docker save "$image" | docker exec -i "$container" ctr images import -
+docker save "$image" | $ctr images import -
 
 # Pause scheduling while the two components switch policies.
 changing=1
@@ -128,7 +130,7 @@ ready kaptain-scheduler
 
 # Scheduler readiness also checks that the decider reports the same policy.
 selector='app in (kaptain-decider,kaptain-scheduler)'
-off_master=$(k get pods -l "$selector" --field-selector=spec.nodeName!=alex-master -o name)
+off_master=$(k get pods -l "$selector" --field-selector="spec.nodeName!=$master" -o name)
 [[ -z "$off_master" ]] || { echo "Kaptain pods are outside the master: $off_master" >&2; exit 1; }
 k get pods -l "$selector" -o wide
 
