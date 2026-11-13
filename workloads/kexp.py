@@ -135,7 +135,7 @@ def manifests(name, namespace="default"):
                     {"key": "kubernetes.io/hostname", "operator": "In", "values": listed}]}]}}}
         if pin:  # on top of the experiment-node selector or the named nodes, which stay
             pod["spec"]["nodeSelector"]["kubernetes.io/hostname"] = pin
-        # train, valid or eval: Kaptain is frozen in valid and eval (bridge/strategies/kaptain.py)
+        # train, valid, eval or cold: Kaptain is frozen in all but train (bridge/strategies/kaptain.py)
         if os.environ.get("KEXP_PHASE"):
             pod["metadata"]["labels"][PHASE] = os.environ["KEXP_PHASE"]
         pod["metadata"]["annotations"] = {

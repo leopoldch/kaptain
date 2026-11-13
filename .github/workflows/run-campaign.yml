@@ -9,7 +9,10 @@ name: Run campaign
 # report per run in the summary, then a table per experiment of the evaluated runs (ktable.py),
 # all the raw files in one artifact. nodes runs them on other machines than the labelled ones.
 # With train_on, a policy is deployed once for all the experiments: it trains on train_on's
-# experiments in turn, then is evaluated on each experiment, also those it never trained on.
+# experiments in turn, then is evaluated on each experiment, also those it never trained on. With
+# eval_nodes, the policies train on nodes and are evaluated on each set of eval_nodes instead,
+# with nodes they never trained on. Those runs are cold: each one starts from the runtime
+# estimates the training left, so no run knows a new node from the run before; a table per set.
 
 on:
   workflow_dispatch:
@@ -54,6 +57,11 @@ on:
         required: false
         default: ""
         type: string
+      eval_nodes:
+        description: Node sets the policies are evaluated on instead of nodes, where they still train; nodes separated by spaces, sets by semicolons (empty to evaluate on nodes)
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -86,6 +94,7 @@ jobs:
           VALIDATE_EVERY: ${{ inputs.validate_every }}
           TRAIN_ON: ${{ inputs.train_on }}
           KEXP_NODES: ${{ inputs.nodes }}  # every kexp call of this step: the runs and their cleanup
+          EVAL_NODES: ${{ inputs.eval_nodes }}  # the evaluation on each of these sets instead of KEXP_NODES
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies use it
           RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: bash workloads/campaign.sh
