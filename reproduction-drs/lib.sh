@@ -12,8 +12,8 @@ source "$drs_dir/cluster.env"
 : "${MONITOR_IFACES:?set MONITOR_IFACES in cluster.env}" "${MONITOR_DISKS:?set MONITOR_DISKS in cluster.env}"
 RESULTS=${RESULTS:-$drs_dir/results}
 [[ $RESULTS == /* ]] || RESULTS=$PWD/$RESULTS  # kexp.py runs from workloads/
-# kexp.py reads these two.
-export KEXP_KUBECTL=$KUBECTL DRS_NET_SERVER
+# kexp.py reads the first two, ../deploy-policy.sh the first and the last two.
+export KEXP_KUBECTL=$KUBECTL DRS_NET_SERVER KAPTAIN_CTR KAPTAIN_MASTER
 
 LABEL=kaptain.io/experiment-node
 MONITOR_PORT=9101

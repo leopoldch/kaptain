@@ -8,8 +8,9 @@ in `workloads/pods/` (`video`, `net`, `drsdisk`) and the experiments in `workloa
 ## Requirements
 
 - Kaptain running (`kaptain-scheduler` and `kaptain-decider` in `kube-system`). `../deploy-policy.sh`,
-  which every run calls, assumes our setup: K3s in the Docker container `kaptain-k3s` on the master,
-  and the Kaptain pods on `alex-master`. Adapt it to yours.
+  which every run calls, builds the decider image with Docker and imports it with `ctr`: set
+  `KUBECTL`, `KAPTAIN_CTR` and `KAPTAIN_MASTER` in `cluster.env` (its defaults are our setup, K3s
+  in the Docker container `kaptain-k3s`).
 - The workers, and only them, labelled `kaptain.io/experiment-node=true`:
   `kubectl label node <worker> kaptain.io/experiment-node=true`.
 - Python 3.11+ and bash 4.4+ on the host running the scripts (not macOS's bash 3.2), Docker on
