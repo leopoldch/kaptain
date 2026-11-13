@@ -27,7 +27,7 @@ cp cluster.env.example cluster.env   # then edit it: kubectl command, network se
 
 | Step | Command | Why |
 |---|---|---|
-| 1. Video | `python3 -I setup/extract-video.py` then `bash setup/install-video.sh` | The `video` pods read the authors' `input.mp4` from `/opt/drs` on their node |
+| 1. Video | `python3 -I setup/extract-video.py` then `bash setup/install-video.sh` | The `video` pods read the authors' `input.mp4` from `/opt/drs` on their node. The video is not in the repository: `extract-video.py` downloads it from the authors' image `jolyonjian/apps:cpu-1.0` on Docker Hub (internet access only, no Docker needed), checks its sha256 and writes `input.mp4` here |
 | 2. Network server | on a host the workers reach: `cd net-server && NET_SERVER_BIND=<ip> NET_SERVER_PORT=<port> docker compose up -d` (port 5301 by default) | The `net` pods talk to it, at `DRS_NET_SERVER` |
 | 3. Images | `bash setup/preload-images.sh` | No run should measure a pull (ffmpeg weighs several hundred MB). Presence is read from the node status, which lists 50 images at most: on a worker with more, check by hand |
 | 4. Monitors | `bash setup/apply-monitors.sh` | DRS's state; they run in every arm. Its output names the interface and disk measured on each worker |
