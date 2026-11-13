@@ -22,6 +22,11 @@ policy to deploy first. The report lands in the run summary, the raw files in th
 `train_on` (`TRAIN_ON` for `campaign.sh`) deploys each policy once for all the experiments: the
 training runs take `train_on`'s experiments in turn, then the policy is evaluated on every
 experiment, so one Kaptain is measured under several loads, also loads it never trained on.
+`eval_nodes` (`EVAL_NODES`) does the same for nodes: sets of nodes separated by semicolons, the
+policies training on `nodes` and evaluated on each set, with nodes they never trained on. Those
+runs are cold (`KEXP_PHASE=cold`): Kaptain is frozen, and each run starts from the runtime
+estimates the training left, for Kaptain as for shortest-estimate and earliest-finish, so no run
+knows a new node from the run before. ktable then gives one table per set of nodes.
 `KEXP_SEED=8 python3 kexp.py run drs-even` replaces the file's seed by hand, and
 `python3 ktable.py runs/` sums up downloaded runs: per experiment and policy, the mean over
 seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.

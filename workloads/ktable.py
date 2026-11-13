@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""One table per experiment: each policy's mean over its seeds, with a 95% interval, and its
-change against a reference policy, paired by seed. A policy trained several times independently
+"""One table per experiment, and per set of nodes when its results ran on several (a campaign's
+eval_nodes): each policy's mean over its seeds, with a 95% interval, and its change against a
+reference policy, paired by seed. A policy trained several times independently
 (replicates) gets one value per training, its mean over the seeds, and the interval is over the
 trainings: whether training reliably gives a good policy. Then the mean delay of each training
 run, in order, to see how fast each policy learns, and of the frozen checkpoints run on the
@@ -133,8 +134,8 @@ def row(replicates, base):
 
 
 def tables(paths, reference):
-    runs = defaultdict(lambda: defaultdict(dict))  # (experiment, strategy) -> replicate -> seed -> metrics
-    training = defaultdict(lambda: defaultdict(dict))  # the same, for the training runs
+    runs = defaultdict(lambda: defaultdict(dict))  # (experiment, nodes, strategy) -> replicate -> seed -> metrics
+    training = defaultdict(lambda: defaultdict(dict))  # (experiment, strategy) -> the same, for the training runs
     validation = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))  # ... -> replicate -> checkpoint -> delays
     skipped = []
     for meta_path in sorted(p for path in paths for p in path.rglob("meta.json")):
@@ -150,30 +151,36 @@ def tables(paths, reference):
             validation[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("checkpoint")].append(
                 values["mean delay (s)"])
             continue
-        phase_runs = training if meta.get("phase") == "train" else runs  # training runs are not results
-        phase_runs[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
+        if meta.get("phase") == "train":  # training runs are not results
+            training[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
+            continue
+        nodes = tuple(sorted(meta["node_cores"]))
+        runs[(meta["experiment"], nodes, meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
 
     lines = []
-    for experiment in sorted({e for e, _ in runs} | {e for e, _ in training} | {e for e, _ in validation}):
-        # The reference by seed, averaged over its trainings if it has several.
-        reference_runs = runs.get((experiment, reference), {})
-        seeds = {s for by_seed in reference_runs.values() for s in by_seed}
-        base = {s: {m: mean(by_seed[s][m] for by_seed in reference_runs.values() if s in by_seed) for m in METRICS}
-                for s in seeds}
-        lines += [f"## `{experiment}`", "",
-                  "Mean over seeds ± 95% interval (over trainings for `r × seeds`); change against "
-                  f"`{reference}` on the same seeds, negative is better.", "",
-                  "| Policy | runs | " + " | ".join(METRICS) + " | "
-                  + " | ".join(f"Δ {m.split(' (')[0]} %" for m in COMPARED) + " |",
-                  "|---|---:|" + "---:|" * (len(METRICS) + len(COMPARED))]
-        for (e, strategy), replicates in sorted(runs.items()):
-            if e != experiment:
-                continue
-            count, cells, changes = row(replicates, base)
-            if strategy == reference:
-                changes = ["ref."] * len(COMPARED)
-            lines.append(f"| `{strategy}` | {count} | " + " | ".join(cells + changes) + " |")
-        lines.append("")
+    for experiment in sorted({e for e, _, _ in runs} | {e for e, _ in training} | {e for e, _ in validation}):
+        # One table per set of nodes the results ran on: the smaller sets first.
+        node_sets = sorted({nodes for e, nodes, _ in runs if e == experiment}, key=lambda nodes: (len(nodes), nodes))
+        for nodes in node_sets or [None]:
+            # The reference by seed, averaged over its trainings if it has several.
+            reference_runs = runs.get((experiment, nodes, reference), {})
+            seeds = {s for by_seed in reference_runs.values() for s in by_seed}
+            base = {s: {m: mean(by_seed[s][m] for by_seed in reference_runs.values() if s in by_seed) for m in METRICS}
+                    for s in seeds}
+            lines += [f"## `{experiment}`" + (f" on {', '.join(nodes)}" if len(node_sets) > 1 else ""), "",
+                      "Mean over seeds ± 95% interval (over trainings for `r × seeds`); change against "
+                      f"`{reference}` on the same seeds, negative is better.", "",
+                      "| Policy | runs | " + " | ".join(METRICS) + " | "
+                      + " | ".join(f"Δ {m.split(' (')[0]} %" for m in COMPARED) + " |",
+                      "|---|---:|" + "---:|" * (len(METRICS) + len(COMPARED))]
+            for (e, on, strategy), replicates in sorted(runs.items()):
+                if (e, on) != (experiment, nodes):
+                    continue
+                count, cells, changes = row(replicates, base)
+                if strategy == reference:
+                    changes = ["ref."] * len(COMPARED)
+                lines.append(f"| `{strategy}` | {count} | " + " | ".join(cells + changes) + " |")
+            lines.append("")
         lines += learning(experiment, training)
         lines += validating(experiment, validation)
     if skipped:
