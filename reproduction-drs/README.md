@@ -18,10 +18,11 @@ in `workloads/pods/` (`video`, `net`, `drsdisk`) and the experiments in `workloa
 
 ## Configure
 
-Run every command from this folder, on a host that can run `kubectl` and `../deploy-policy.sh`.
+Run every command from this folder, on the node that runs Kaptain: `../deploy-policy.sh` builds
+the decider image there and imports it into that node's containerd.
 
 ```bash
-cp cluster.env.example cluster.env   # then edit it: kubectl command, network server, interfaces, disks
+cp cluster.env.example cluster.env   # then edit it: kubectl, ctr, this node's name, network server, interfaces, disks
 ```
 
 ## Set up the cluster (once)
