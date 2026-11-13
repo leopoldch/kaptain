@@ -8,7 +8,7 @@
 #    and one network scores each node from its embedding and g, so any node count fits. The
 #    critic, with its own embedding, values g. It samples its nodes during a training run (an
 #    episode) and learns once the run is over, in the background: PPO with generalized
-#    advantages. A pod labelled kaptain.io/phase=eval or valid freezes it: it picks its best
+#    advantages. A pod labelled kaptain.io/phase=eval, valid or cold freezes it: it picks its best
 #    node and learns nothing (the estimates still do). With -ef, the network only corrects
 #    earliest-finish: a node's logit is its earliest-finish score over TEMPERATURE_S plus the
 #    network's, whose last layer starts at zero, so the untrained policy is earliest-finish and
@@ -26,8 +26,10 @@
 #    E is what the experiment pods used: the CPU time (usr + sys) stress-ng reports for each,
 #    spread evenly over its run.
 # 4. Between two runs kexp settles the policy: the run that ended is learned from before the next
-#    one starts, so a frozen run uses one model throughout; a valid run starts from the
-#    training's runtime estimates, and the training goes on from them afterwards.
+#    one starts, so a frozen run uses one model throughout; a valid or cold run starts from the
+#    training's runtime estimates, and the training goes on from them afterwards. The same for
+#    the estimates of shortest-estimate and earliest-finish, so that a cold run, an evaluation on
+#    nodes the training never saw, meets them unknown every time.
 # 5. With -pod, a decision is rewarded for the pod it placed, not for the whole cluster:
 #    r = -(d + beta e + s) / 100, d the seconds from the decision to the end of its pod, e the
 #    CPU-seconds the pod used, s the seconds it cost the pods already on its node: s = L - B, L
@@ -82,7 +84,11 @@ MIN_LOADED = 20  # pods a node must have run before its slowdown is learned; the
 MIN_TIMED_S = 10.0  # shorter pods do not teach the slowdown: timestamps to the second make a 2 s disk task 2 or 3 s
 MAX_SLOWDOWN_SE = 0.5  # a slowdown is learned once its standard error, at the estimates' noise SIGMA2, is below this
 PHASE = "kaptain.io/phase"
-FROZEN = ("eval", "valid")  # phases that only use the policy: the evaluation, and checkpoints along the training
+FROZEN = ("eval", "valid", "cold")  # phases that only use the policy: the evaluation, checkpoints along the training, and cold runs
+# Of those, the phases whose runs each start from the runtime estimates the training left, and
+# leave them as they were. A cold run is an evaluation on other nodes than the training's: what
+# one run learns of a node never seen must not reach the next.
+KEPT = ("valid", "cold")
 HALF_LIFE_S = 240.0  # of the discount: about a disk task on the Pi, which a shorter one would let look cheap
 GAE = 0.95  # generalized advantage estimation, per decision
 EPOCHS = 8  # passes over an episode at each update
@@ -265,6 +271,7 @@ class Cluster:
         self.reading = []  # the CPU reads not finished yet
         self.used = collections.deque(maxlen=20000)  # (namespace, started, finished, CPU-seconds, measured, pod)
         self.ended = collections.deque(maxlen=20000)  # (namespace, pod, finished, succeeded) of every pod that stopped
+        self.kept = None  # the training's runtime estimates, while the runs of a KEPT phase use a copy
         self.lock = threading.Lock()
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -292,6 +299,20 @@ class Cluster:
         pods = self.poll()
         with self.lock:
             self.read(pods)
+
+    def keep(self, phase):
+        """Between two runs, the pods of the last one read (refresh). A run of a KEPT phase starts
+        from the training's runtime estimates and leaves them as they were: measuring must not
+        teach them. Any other run goes on from them. True while the training's are kept aside."""
+        with self.lock:
+            if self.kept is not None:
+                self.estimates.known = copy.deepcopy(self.kept)
+            if phase in KEPT:
+                if self.kept is None:
+                    self.kept = copy.deepcopy(self.estimates.known)
+            elif phase:
+                self.kept = None
+            return self.kept is not None
 
     def get(self, path):
         url = f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}{path}"
@@ -392,6 +413,17 @@ class Cluster:
                    for task, on, started in self.running if node is None or on == node)
 
 
+def settle_estimates(strategy, phase):
+    """Between two runs, for a rule that only learns runtime estimates: nothing to wait for, but
+    the estimates are kept aside for the runs of a KEPT phase, as Kaptain's are (Cluster.keep)."""
+    if phase not in KEPT and (strategy.cluster is None or strategy.cluster.kept is None):
+        return {"settled": False}  # nothing kept aside, nothing to keep: no read of the API that could fail the run
+    if strategy.cluster is None:  # no decision yet: what is kept is then empty
+        strategy.cluster = Cluster()
+    strategy.cluster.refresh()
+    return {"settled": False, "estimates_kept": strategy.cluster.keep(phase)}
+
+
 class ShortestEstimate(SchedulingStrategy):
     """The paper's simple rule: the node with the shortest estimated runtime for the pod."""
 
@@ -408,6 +440,9 @@ class ShortestEstimate(SchedulingStrategy):
             known = {n["name"]: self.cluster.estimates.get(task, n["name"]) for n in snapshot["nodes"]}
         # A node where the task never ran is tried first, otherwise a copied estimate is never checked.
         return {name: -math.exp(e[0]) if e and e[2] else 0.0 for name, e in known.items()}
+
+    def settle(self, phase):
+        return settle_estimates(self, phase)
 
 
 class EarliestFinish(SchedulingStrategy):
@@ -426,6 +461,9 @@ class EarliestFinish(SchedulingStrategy):
         with self.cluster.lock:
             finish = finish_scores(self.cluster, task, snapshot["nodes"], now)
         return {n["name"]: score for n, score in zip(snapshot["nodes"], finish)}
+
+    def settle(self, phase):
+        return settle_estimates(self, phase)
 
 
 class SlowedEstimate(SchedulingStrategy):
@@ -598,7 +636,6 @@ class Kaptain(SchedulingStrategy):
         self.episode = []  # the decisions of the training run under way
         self.update = None  # the update under way, if any
         self.failure = None  # the first update that failed: every settle refuses from then on
-        self.kept = None  # the training's runtime estimates, while valid runs use a copy
         self.lock = threading.Lock()  # FastAPI may call scores() from two threads at once
 
     def node_vector(self, n, pod, task, now):
@@ -688,11 +725,13 @@ class Kaptain(SchedulingStrategy):
 
     def settle(self, phase):
         """Between two runs (kexp), never on a decision: learns from the training run that ended
-        and waits for it, so the next run uses one model throughout. A valid run starts from the
-        training's runtime estimates and leaves them as they were: measuring must not teach the
-        training. Any other run goes on from them."""
+        and waits for it, so the next run uses one model throughout. A valid or cold run starts
+        from the training's runtime estimates and leaves them as they were (Cluster.keep)."""
         if self.cluster is None:
-            return {"settled": True, "episodes": self.episodes}
+            if phase not in KEPT:
+                return {"settled": True, "episodes": self.episodes}
+            with self.lock:  # no decision yet: what is kept is then empty, and stays so run after run
+                self.cluster = Cluster(cpu=self.beta > 0)
         self.cluster.refresh()
         with self.lock:
             if self.episode:
@@ -702,15 +741,7 @@ class Kaptain(SchedulingStrategy):
             update.result()  # raises what the update raised
         if self.failure:  # also one that ran without settle: no run goes on from a model not learned
             raise RuntimeError(f"an update failed: {self.failure}")
-        with self.cluster.lock:
-            if self.kept is not None:
-                self.cluster.estimates.known = copy.deepcopy(self.kept)
-            if phase == "valid":
-                if self.kept is None:
-                    self.kept = copy.deepcopy(self.cluster.estimates.known)
-            elif phase:
-                self.kept = None
-        return {"settled": True, "episodes": self.episodes, "estimates_kept": self.kept is not None}
+        return {"settled": True, "episodes": self.episodes, "estimates_kept": self.cluster.keep(phase)}
 
     def close(self, now):
         """Ends the training run: its last pod has finished. Learns from it in the background,
