@@ -10,7 +10,7 @@ nodes:
 # The default takes about a day or more: shorten it for a first try.
 campaign:
   experiments: even-5s even-10s
-  strategies: kaptain earliest-finish shortest-estimate least-allocated default-scheduler
+  strategies: kaptain-pod-alone earliest-finish shortest-estimate least-allocated default-scheduler
   seeds: 7 8 9 10 11
   train_runs: 10
   replicates: 3

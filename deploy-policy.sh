@@ -8,8 +8,8 @@ case "$strategy" in
   *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-pod(-alone)?|(-l[0-9]+(\.[0-9]+)?(-llm|-placebo)?)?)(-ef)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
-if [[ $strategy != *-llm && $strategy != *-llm-ef ]]; then
-  unset OPENAI_API_KEY  # only the -llm strategies get the key
+if [[ $strategy != *-llm && $strategy != *-llm-ef && -z ${KAPTAIN_LLM_PRIOR:-} ]]; then
+  unset OPENAI_API_KEY  # only the -llm strategies get the key, and any policy of a campaign with the llm prior
 elif [[ -z ${OPENAI_API_KEY:-} ]]; then
   echo "$strategy needs OPENAI_API_KEY (the repository secret, in GitHub Actions)." >&2
   exit 2

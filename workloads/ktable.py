@@ -155,7 +155,9 @@ def tables(paths, reference):
             training[(meta["experiment"], meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
             continue
         nodes = tuple(sorted(meta["node_cores"]))
-        runs[(meta["experiment"], nodes, meta["strategy"])][meta.get("replicate")][meta.get("seed")] = values
+        # A run given a prior for the pairs never run is another policy: its own row.
+        strategy = meta["strategy"] + (f" + {meta['prior']} prior" if meta.get("prior") else "")
+        runs[(meta["experiment"], nodes, strategy)][meta.get("replicate")][meta.get("seed")] = values
 
     lines = []
     for experiment in sorted({e for e, _, _ in runs} | {e for e, _ in training} | {e for e, _ in validation}):

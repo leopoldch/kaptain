@@ -13,6 +13,8 @@ name: Run campaign
 # eval_nodes, the policies train on nodes and are evaluated on each set of eval_nodes instead,
 # with nodes they never trained on. Those runs are cold: each one starts from the runtime
 # estimates the training left, so no run knows a new node from the run before; a table per set.
+# With priors, each cold run is done once per prior, under the same deployment: none, or the
+# runtime a task starts from on a node where it never ran (copy, llm, llm-placebo, placebo).
 
 on:
   workflow_dispatch:
@@ -25,7 +27,7 @@ on:
       strategies:
         description: Policies, separated by spaces; kaptain-b<beta>-l<lambda>[-llm|-placebo][-ef] sets its weights, Phi and earliest-finish prior, kaptain[-b<beta>]-pod[-alone][-ef] rewards each decision for its own pod, -alone without the pods it slows; default-scheduler; pin-<node>
         required: true
-        default: kaptain earliest-finish shortest-estimate least-allocated default-scheduler
+        default: kaptain-pod-alone earliest-finish shortest-estimate least-allocated default-scheduler
         type: string
       seeds:
         description: Seeds evaluated, separated by spaces (each one gives other pods and arrival times)
@@ -62,6 +64,11 @@ on:
         required: false
         default: ""
         type: string
+      priors:
+        description: With eval_nodes, what a task starts from on a node where it never ran, each cold run done once per prior; none, copy, llm, llm-placebo, placebo, separated by spaces
+        required: false
+        default: none
+        type: string
 
 permissions:
   contents: read
@@ -95,7 +102,8 @@ jobs:
           TRAIN_ON: ${{ inputs.train_on }}
           KEXP_NODES: ${{ inputs.nodes }}  # every kexp call of this step: the runs and their cleanup
           EVAL_NODES: ${{ inputs.eval_nodes }}  # the evaluation on each of these sets instead of KEXP_NODES
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies use it
+          PRIORS: ${{ inputs.priors }}  # of the cold runs
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies and the llm prior use it
           RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: bash workloads/campaign.sh
 
