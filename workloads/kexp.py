@@ -25,6 +25,7 @@ KUBECTL = os.environ.get("KEXP_KUBECTL", "docker exec -i kaptain-k3s kubectl --s
 ARRIVAL = "kaptain.io/arrival-s"
 TASK_ID = "kaptain.io/task-id"
 PHASE = "kaptain.io/phase"
+PRIORS = ("copy", "llm", "llm-placebo", "placebo")  # as bridge/strategies/kaptain.py
 EXPERIMENT_LABEL = "kaptain.io/experiment"
 OWNER_LABEL = "kaptain.io/run-owner"  # random per process: a run deletes only the namespace it created
 HEARTBEAT = "kaptain.io/heartbeat"  # unix time, renewed while the run lives
@@ -424,6 +425,67 @@ def delete_stale_namespaces():
         kubectl("delete", "namespace", *stale, "--ignore-not-found", "--wait=true", "--timeout=300s", timeout_s=330)
 
 
+# What a node says of its own hardware, to any container: the kernel hides the board's name
+# (/sys/firmware) from them, the CPU and the disks it does not.
+SHEET_SCRIPT = r"""
+one() { cat "$1" 2>/dev/null | head -n 1; }
+echo "cpu model: $(grep -m1 -i '^model name' /proc/cpuinfo | cut -d: -f2-)"
+echo "arm cpu ids (implementer, part): $(grep -i -E '^CPU (implementer|part)' /proc/cpuinfo | sort -u | cut -d: -f2- | tr '\n' ' ')"
+echo "board: $(grep -m1 -E '^(Model|Hardware)' /proc/cpuinfo | cut -d: -f2-) $(one /sys/class/dmi/id/sys_vendor) $(one /sys/class/dmi/id/product_name)"
+echo "virtual machine: $(grep -q -m1 hypervisor /proc/cpuinfo && echo yes || echo no)"
+echo "cores online: $(one /sys/devices/system/cpu/online) of $(grep -c '^processor' /proc/cpuinfo)"
+echo "cpu frequency kHz (hardware max, allowed max): $(one /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq) $(one /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq)"
+echo "cpu governor: $(one /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
+echo "memory: $(grep -m1 MemTotal /proc/meminfo | cut -d: -f2-)"
+for d in /sys/block/*; do
+  n=${d##*/}
+  case $n in loop*|ram*|zram*|dm-*|sr*) continue;; esac
+  echo "disk $n: $(( $(one $d/size) / 2097152 )) GiB, rotational $(one $d/queue/rotational), $(one $d/device/model) $(one $d/device/type) $(one $d/device/name)"
+done
+"""
+
+
+def node_sheets():
+    """Each experiment node's data sheet, a text no one writes: what Kubernetes knows of the node,
+    then what a busybox pod reads there in /proc and /sys (SHEET_SCRIPT). The LLM prior reads
+    them (bridge/strategies/kaptain.py). A node whose pod did not finish in 3 min raises."""
+    workers = worker_nodes()
+    nodes = {n["metadata"]["name"]: n for n in json.loads(kubectl("get", "nodes", "-o", "json"))["items"]
+             if n["metadata"]["name"] in workers}
+    check_no_other_run()
+    owner, namespace = uuid.uuid4().hex, f"kexp-sheets-{int(time.time())}"
+    template = read_manifest("noop")
+    pods = []
+    for i, node in enumerate(sorted(nodes)):
+        pod = copy.deepcopy(template)
+        pod["metadata"] = {"name": f"sheet-{i}", "namespace": namespace, "annotations": {"kaptain.io/node": node}}
+        pod["spec"]["schedulerName"] = DEFAULT_SCHEDULER
+        pod["spec"]["nodeSelector"] = {"kubernetes.io/hostname": node}
+        pod["spec"]["activeDeadlineSeconds"] = 120
+        pod["spec"]["containers"][0]["command"] = ["sh", "-c", SHEET_SCRIPT]
+        pods.append(pod)
+    try:
+        create_namespace(namespace, owner)
+        kubectl("create", "-f", "-", stdin=json.dumps({"apiVersion": "v1", "kind": "List", "items": pods}))
+        if not wait(namespace, len(pods), time.monotonic() + 180):
+            raise RuntimeError("sheets: a node's pod did not finish in 3 min")
+        sheets = {}
+        for pod in pods:
+            node = pod["metadata"]["annotations"]["kaptain.io/node"]
+            info, capacity = nodes[node]["status"]["nodeInfo"], nodes[node]["status"]["capacity"]
+            read = kubectl("-n", namespace, "logs", pod["metadata"]["name"]).strip()
+            if "cores online" not in read:
+                raise RuntimeError(f"sheets: nothing read on {node}: {read[:200]!r}")
+            lines = [f"architecture: {info['architecture']}", f"operating system: {info['osImage']}, kernel {info['kernelVersion']}",
+                     f"Kubernetes capacity: {capacity['cpu']} CPU, {capacity['memory']} memory"]
+            # No empty answers: a line whose file the node does not have says nothing to the reader.
+            lines += [" ".join(line.split()) for line in read.splitlines() if line.split(":", 1)[-1].strip(" ,")]
+            sheets[node] = "; ".join(lines)
+        return sheets
+    finally:
+        delete_own_namespace(owner)
+
+
 def check_no_other_run():
     """Another run's namespace, or a killed run's: deleting either is for `kexp.py cleanup`, not for a run."""
     namespaces = kubectl("get", "namespaces", "-l", EXPERIMENT_LABEL, "-o", "name").split()
@@ -444,12 +506,14 @@ def check_idle(workers):
         raise RuntimeError(f"cluster not idle, stop these first: {' '.join(busy)}")
 
 
-def settle(phase):
+def settle(phase, prior="", sheets=None):
     """Has the decider's policy finish learning from the run that ended and get ready for the
-    next one (bridge/strategies/kaptain.py): between runs, off the decision path. Raises when it
-    did not: a failed update, or no answer."""
-    path = f"/api/v1/namespaces/kube-system/services/kaptain-decider:8888/proxy/settle?phase={phase}"
-    return json.loads(kubectl("create", "--raw", path, "-f", "-", stdin="{}", timeout_s=600))
+    next one (bridge/strategies/kaptain.py): between runs, off the decision path. prior: what the
+    next run gives the task and node pairs never run (KEXP_PRIOR), on the nodes of sheets, each
+    with its data sheet (node_sheets). Raises when it did not: a
+    failed update, a prior the policy cannot take or the LLM did not give, or no answer."""
+    path = f"/api/v1/namespaces/kube-system/services/kaptain-decider:8888/proxy/settle?phase={phase}&prior={prior}"
+    return json.loads(kubectl("create", "--raw", path, "-f", "-", stdin=json.dumps({"sheets": sheets or {}}), timeout_s=600))
 
 
 def check_learned(phase, before, after):
@@ -503,6 +567,16 @@ def run(name, run_id, namespace, owner, out_root):
     env = scheduler_env()
     # Kaptain's plugin names the policy; without it, what placed the pods.
     strategy = f"pin-{pin}" if pin else os.environ.get("KEXP_SCHEDULER") or env["KAPTAIN_STRATEGY"]
+    prior = os.environ.get("KEXP_PRIOR") or None
+    if prior and prior not in PRIORS:
+        raise RuntimeError(f"KEXP_PRIOR={prior}: not one of {', '.join(PRIORS)}")
+    if prior and (pin or os.environ.get("KEXP_SCHEDULER")):
+        raise RuntimeError("KEXP_PRIOR: only when Kaptain's plugin places the pods")
+    # A prior is given on this run's nodes; the llm one reads their data sheets (kexp.py sheets).
+    known_sheets = json.loads(Path(os.environ["KEXP_SHEETS"]).read_text()) if os.environ.get("KEXP_SHEETS") else {}
+    sheets = {node: known_sheets.get(node, "") for node in nodes} if prior else {}
+    if prior == "llm" and not all(sheets.values()):
+        raise RuntimeError("KEXP_PRIOR=llm: KEXP_SHEETS must give a data sheet for every node of the run")
     images = running_images()  # before any output: a run without clear provenance is not started
     check_no_other_run()
     check_idle(nodes)
@@ -522,6 +596,8 @@ def run(name, run_id, namespace, owner, out_root):
         "replicate": int(os.environ["KEXP_REPLICATE"]) if os.environ.get("KEXP_REPLICATE") else None,
         # A valid run: how many training runs the frozen policy had learned from.
         "checkpoint": int(os.environ["KEXP_CHECKPOINT"]) if os.environ.get("KEXP_CHECKPOINT") else None,
+        # What the task and node pairs never run started from; None: the policy's own handling.
+        "prior": prior,
         "pods": len(pods),
         "strategy": strategy,
         "policy_version": env["POLICY_VERSION"],
@@ -538,7 +614,7 @@ def run(name, run_id, namespace, owner, out_root):
     created = False
     try:
         if plugin:  # raises before any pod: the run does not start
-            meta["settled"] = settle(meta["phase"])
+            meta["settled"] = settle(meta["phase"], prior or "", sheets)
         create_namespace(namespace, owner)
         created = True
         complete = run_pods(out, namespace, pods, nodes, experiment["timeout_s"])
@@ -853,7 +929,7 @@ def run_and_report(name, out_root):
 
 def main():
     parser = argparse.ArgumentParser(prog="kexp")
-    parser.add_argument("command", choices=["list", "manifests", "run", "cleanup"])
+    parser.add_argument("command", choices=["list", "manifests", "run", "cleanup", "sheets"])
     parser.add_argument("experiment", nargs="?")
     parser.add_argument("--out", type=Path, default=Path("results"))
     args = parser.parse_args()
@@ -864,6 +940,8 @@ def main():
         return print_manifests(args.experiment)
     if args.command == "cleanup":
         return delete_stale_namespaces()
+    if args.command == "sheets":
+        return print(json.dumps(node_sheets(), indent=2))
     if not run_and_report(args.experiment, args.out):
         sys.exit(1)
 

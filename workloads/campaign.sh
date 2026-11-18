@@ -10,6 +10,20 @@ read -ra experiments <<< "$EXPERIMENTS"
 read -ra strategies <<< "$STRATEGIES"
 read -ra seeds <<< "$SEEDS"
 read -ra train_on <<< "${TRAIN_ON:-}"
+# PRIORS, with EVAL_NODES: every cold run is done once per prior, the same deployment and seed
+# under each in turn. none: a pair never run is handled as the policy does without one; copy,
+# llm, llm-placebo, placebo: it starts from that runtime (kaptain.py). Only for the policies that estimate
+# runtimes; the others run once. The order turns from one seed to the next, so that no prior
+# always runs first or last of its seed.
+read -ra priors <<< "${PRIORS:-none}"
+for prior in "${priors[@]}"; do
+  [[ $prior =~ ^(none|copy|llm|llm-placebo|placebo)$ ]] || { echo "bad prior: $prior"; exit 1; }
+  if [[ $prior == llm* ]]; then
+    [[ -n ${OPENAI_API_KEY:-} ]] || { echo "priors: $prior needs OPENAI_API_KEY"; exit 1; }
+    export KAPTAIN_LLM_PRIOR=1  # deploy-policy.sh then leaves the key to every policy
+  fi
+  [[ $prior == llm ]] && read_sheets=1
+done
 # EVAL_NODES, node sets separated by semicolons: the policies still train on KEXP_NODES (or the
 # labelled nodes) and are evaluated on each set instead, some of its nodes never trained on. Those
 # runs are cold: each one starts from the runtime estimates the training left (kaptain.py).
@@ -34,6 +48,7 @@ done
 [[ $TRAIN_RUNS =~ ^[0-9]+$ ]] || { echo "bad train_runs: $TRAIN_RUNS"; exit 1; }
 [[ $REPLICATES =~ ^[1-9][0-9]*$ ]] || { echo "bad replicates: $REPLICATES"; exit 1; }
 [[ $VALIDATE_EVERY =~ ^[0-9]+$ ]] || { echo "bad validate_every: $VALIDATE_EVERY"; exit 1; }
+[[ ${priors[*]} == none ]] || (( ${#eval_sets[@]} )) || { echo 'priors: only with eval_nodes'; exit 1; }
 if (( ${#eval_sets[@]} )); then
   for strategy in "${strategies[@]}"; do
     # Its load model learns from every run and is not set back: its cold runs would not be cold.
@@ -55,6 +70,17 @@ fi
 # then is evaluated on each, so one policy is measured under every load, some never trained on.
 groups=("${experiments[@]}")
 (( ${#train_on[@]} )) && groups=("${experiments[*]}")
+
+# The llm prior reads each node's data sheet: read once on the nodes themselves, every node of
+# the campaign, and kept with the results.
+if [[ -n ${read_sheets:-} ]]; then
+  mkdir -p "$OUT"
+  python3 workloads/kexp.py cleanup
+  KEXP_NODES="${KEXP_NODES:-} ${eval_sets[*]}" python3 workloads/kexp.py sheets > "$OUT/node-sheets.json" ||
+    { echo 'priors: the node data sheets could not be read'; exit 1; }
+  export KEXP_SHEETS=$OUT/node-sheets.json
+  cat "$OUT/node-sheets.json"
+fi
 
 failed=0
 runs=()
@@ -91,9 +117,15 @@ for group in "${groups[@]}"; do
         done
       fi
       if (( ${#eval_sets[@]} )); then
+        tried=(none)
+        [[ $strategy == kaptain* || $strategy == shortest-estimate || $strategy == earliest-finish ]] && tried=("${priors[@]}")
         for nodeset in "${!eval_sets[@]}"; do
           for experiment in "${evaluated[@]}"; do
-            for seed in "${seeds[@]}"; do plan+=("$experiment cold $seed - $((nodeset + 1))"); done
+            for at in "${!seeds[@]}"; do
+              for ((i = 0; i < ${#tried[@]}; i++)); do
+                plan+=("$experiment cold ${seeds[at]} - $((nodeset + 1)) ${tried[(at + i) % ${#tried[@]}]}")
+              done
+            done
           done
         done
       else
@@ -102,19 +134,20 @@ for group in "${groups[@]}"; do
         done
       fi
       for step in "${plan[@]}"; do
-        read -r experiment phase seed checkpoint nodeset <<< "$step"
+        read -r experiment phase seed checkpoint nodeset prior <<< "$step"
         [[ $checkpoint == - ]] && checkpoint=''
+        [[ $prior == none ]] && prior=''
         nodes=${KEXP_NODES:-}
         [[ -n $nodeset ]] && nodes=${eval_sets[nodeset - 1]}
         python3 workloads/kexp.py cleanup
         # A namespace name takes no dot: kaptain-b0.5 becomes kaptain-b0-5 there.
         if KEXP_NODES=$nodes KEXP_PHASE=$phase KEXP_SEED=$seed KEXP_REPLICATE=$replicate KEXP_SCHEDULER=$scheduler KEXP_PIN=$pin \
-            KEXP_CHECKPOINT=$checkpoint \
-            KEXP_RUN_ID=$RUN-${strategy//./-}${replicate:+-r$replicate}-$phase-s$seed${checkpoint:+-c$checkpoint}${nodeset:+-n$nodeset} \
+            KEXP_CHECKPOINT=$checkpoint KEXP_PRIOR=$prior \
+            KEXP_RUN_ID=$RUN-${strategy//./-}${replicate:+-r$replicate}-$phase-s$seed${checkpoint:+-c$checkpoint}${nodeset:+-n$nodeset}${prior:+-p$prior} \
             python3 workloads/kexp.py run "$experiment" --out "$OUT"; then
-          runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint}${nodeset:+, nodes $nodeset} | $seed | complete |")
+          runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint}${nodeset:+, nodes $nodeset}${prior:+, $prior prior} | $seed | complete |")
         else
-          runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint}${nodeset:+, nodes $nodeset} | $seed | failed |")
+          runs+=("| $experiment | $strategy | ${replicate:-–} | $phase${checkpoint:+ $checkpoint}${nodeset:+, nodes $nodeset}${prior:+, $prior prior} | $seed | failed |")
           failed=1
         fi
       done

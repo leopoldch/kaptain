@@ -6,7 +6,7 @@ import logging
 import os
 import time
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import Response
 
 import metrics as decider_metrics
@@ -31,15 +31,24 @@ def prometheus_metrics():
     return Response(decider_metrics.render(), media_type="text/plain; version=0.0.4")
 
 
+async def details(request: Request) -> dict:
+    # Read by hand: kexp posts through kubectl and the API server's proxy, whatever content type they set.
+    try:
+        body = json.loads(await request.body() or b"{}")
+    except ValueError:
+        return {}
+    return body if isinstance(body, dict) else {}
+
+
 @app.post("/settle")
-def settle(phase: str = ""):
+def settle(phase: str = "", prior: str = "", details: dict = Depends(details)):
     # Off the decision path: kexp calls it after a run and before the next, and may wait.
     # A failure answers 500: kexp then does not start the next run.
     started = time.perf_counter()
     try:
-        result = strategy.settle(phase)
+        result = strategy.settle(phase, prior, details.get("sheets"))
     except Exception:
-        log.exception(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "error",
+        log.exception(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "prior": prior, "status": "error",
                                   "duration_ms": round((time.perf_counter() - started) * 1000, 3)}))
         raise
     log.info(json.dumps({"event": "settle", "strategy": strategy.name, "phase": phase, "status": "ok",

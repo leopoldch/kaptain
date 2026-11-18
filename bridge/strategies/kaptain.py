@@ -41,6 +41,20 @@
 #    a measure: B is a guess of what would have happened, and later pods on the node move L too.
 #    -alone drops it (s = 0, no B), to see what it brings: kaptain-pod-alone. A pod that failed
 #    weighs on its node until it stopped, and its own delay counts until the end of the run.
+# 6. A prior for the pairs never run (settle's prior, for the two rules too). Without one, a task
+#    never run on a node borrows the estimate of the node where it ran most, and the rules send
+#    it there first. With one, the pair gets a runtime before any pod ran there, marked as run
+#    once and as uncertain as the borrowed estimate it replaces: copy, the same borrowed estimate; llm, what an LLM expects from the data sheets of the
+#    nodes (read on each node by kexp, no one writes them) and the runtimes measured on the
+#    others, never one of that node; llm-placebo, the same LLM and question without any data
+#    sheet, so what the sheets bring shows against it; placebo, a runtime drawn between the
+#    task's shortest and longest, which says nothing about the node. Asked between two runs,
+#    never on a decision.
+#    The pods that then run there correct it as fast as they correct a borrowed estimate. Two
+#    things change with a prior: the rules no longer try the node first, and the runtime it is
+#    given. copy against none measures the first alone, same runtime and same uncertainty; llm
+#    against copy, llm-placebo and placebo the second. The LLM reads the nodes as node-1,
+#    node-2, ...: a name such as alex-jetson would tell it the hardware without any sheet.
 # This is a new variant: Kaptain trained with one-step A2C, discounted per decision, until
 # f53745f. Estimates and weights live in the decider's memory: a redeployment starts from
 # scratch. Every update logs the weights (kaptain_checkpoint), and kexp collects them.
@@ -102,6 +116,22 @@ STRESSOR_LINE = re.compile(r"\]\s+(?:cpu|vm|hdd)\s+\d+\s+[\d.]+\s+([\d.]+)\s+([\
 PROMPT = """You judge a Kubernetes cluster that runs batch tasks. From its state, score from 0 to
 100 how well it is placed for every task to finish soon: 100 when nothing runs or waits, low
 when tasks pile up on slow or busy nodes. Answer with JSON only: {"score": <number>}."""
+PRIORS = ("copy", "llm", "llm-placebo", "placebo")  # what a pair never run starts from, when a run asks for one
+# The prior's own model, larger than the Phi bonus's: asked once per node between two runs, its time does not count.
+PRIOR_MODEL = os.environ.get("OPENAI_PRIOR_MODEL", "gpt-6.1-terra")
+BLIND = "no data sheet"  # llm-placebo: what the LLM reads of every node
+# The tasks as the LLM reads them: the commands of workloads/pods/.
+TASKS = {"cpu": "stress-ng --cpu 1 --cpu-ops 6000: a fixed count of CPU operations, one worker",
+         "memory": "stress-ng --vm 1 --vm-bytes 128M --vm-ops 2000000: a fixed count of memory writes over 128 MB",
+         "disk": "stress-ng --hdd 1 --hdd-bytes 128M --hdd-ops 20000: a fixed count of file writes, 128 MB files"}
+PRIOR_PROMPT = """You estimate how long batch tasks will run on a machine of a Kubernetes cluster where
+they never ran. You get the data sheet of every machine, what each task does, and the mean
+runtime in seconds measured for each task on the machines where it ran. A data sheet is what
+Kubernetes and the machine's own /proc and /sys report, read by a script. Every task runs in a
+container limited to 200 to 500 millicores, next to the other tasks of its machine. A scheduler
+places tasks from your numbers until the first ones finish there: too short, and it sends that
+machine too many tasks; too long, and it leaves the machine idle. Give the runtime you expect.
+Answer with JSON only, one number of seconds per task asked: {"<task>": <seconds>}."""
 
 
 def stamp(text):
@@ -111,10 +141,13 @@ def stamp(text):
 class Estimates:
     def __init__(self):
         self.known = {}  # (task, node) -> [mu, v, runs]
+        self.prior = {}  # the same, for pairs never run: set for one run (Cluster.prime), empty otherwise
 
     def get(self, task, node):
         if (task, node) in self.known:
             return self.known[(task, node)]
+        if (task, node) in self.prior:
+            return self.prior[(task, node)]
         runs = [(n, other) for (t, other), (_, _, n) in self.known.items() if t == task]
         if not runs:
             return None
@@ -272,6 +305,7 @@ class Cluster:
         self.used = collections.deque(maxlen=20000)  # (namespace, started, finished, CPU-seconds, measured, pod)
         self.ended = collections.deque(maxlen=20000)  # (namespace, pod, finished, succeeded) of every pod that stopped
         self.kept = None  # the training's runtime estimates, while the runs of a KEPT phase use a copy
+        self.draws = random.Random(7)  # the placebo prior's runtimes
         self.lock = threading.Lock()
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -313,6 +347,51 @@ class Cluster:
             elif phase:
                 self.kept = None
             return self.kept is not None
+
+    def prime(self, prior, sheets=None):
+        """Before a run, after keep: the runtime each pair never run starts from, on every node
+        of the run (sheets: each one's data sheet, as kexp read it on the node), marked as run
+        once, with the variance of the borrowed estimate it replaces (PRIORS); none without a prior. Returns the seconds given, per node and
+        task. The LLM is asked here, between two runs, once per node; an answer that fails
+        raises, so the run does not start with another prior."""
+        sheets = sheets or {}
+        if prior and prior not in PRIORS:
+            raise ValueError(f"unknown prior {prior!r}, known: {', '.join(PRIORS)}")
+        if prior and not sheets:
+            raise ValueError(f"{prior} prior: the run names no node")
+        if prior == "llm" and not all(sheets.values()):
+            raise ValueError(f"llm prior: no data sheet for {', '.join(sorted(n for n, s in sheets.items() if not s))}")
+        with self.lock:
+            self.estimates.prior = {}
+            measured = {pair: math.exp(e[0]) for pair, e in self.estimates.known.items()}
+            # What each pair has without a prior: the runtime copy gives, the variance every prior gets.
+            borrowed = {(task, node): self.estimates.get(task, node)
+                        for task in {t for t, _ in measured} for node in sheets}
+        tasks = sorted({task for task, _ in measured})
+        if prior and not tasks:  # a run named after a prior it did not get would be no result
+            raise ValueError(f"{prior} prior: no runtime measured yet, nothing to start from")
+        given = {}
+        for node in sorted(sheets) if prior else ():
+            missing = [task for task in tasks if (task, node) not in measured]
+            if not missing:
+                continue
+            if prior == "llm":
+                given[node] = ask_runtimes(node, missing, measured, sheets)
+            elif prior == "llm-placebo":
+                given[node] = ask_runtimes(node, missing, measured, {name: BLIND for name in sheets})
+            elif prior == "placebo":
+                spans = {task: [s for (t, _), s in measured.items() if t == task] for task in missing}
+                given[node] = {task: math.exp(self.draws.uniform(math.log(max(min(s), 1.0)), math.log(max(max(s), 1.0))))
+                               for task, s in spans.items()}
+            else:
+                given[node] = {task: math.exp(borrowed[(task, node)][0]) for task in missing}
+        with self.lock:
+            self.estimates.prior = {(task, node): [math.log(max(seconds, 1.0)), borrowed[(task, node)][1], 1]
+                                    for node, tasks_s in given.items() for task, seconds in tasks_s.items()}
+        given = {node: {task: round(seconds, 1) for task, seconds in tasks_s.items()} for node, tasks_s in given.items()}
+        log.info(json.dumps({"event": "kaptain_prior", "prior": prior or None, "seconds": given,
+                             **({"model": PRIOR_MODEL} if prior.startswith("llm") else {})}))
+        return given
 
     def get(self, path):
         url = f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}{path}"
@@ -413,15 +492,22 @@ class Cluster:
                    for task, on, started in self.running if node is None or on == node)
 
 
-def settle_estimates(strategy, phase):
+def settle_estimates(strategy, phase, prior="", sheets=None):
     """Between two runs, for a rule that only learns runtime estimates: nothing to wait for, but
-    the estimates are kept aside for the runs of a KEPT phase, as Kaptain's are (Cluster.keep)."""
-    if phase not in KEPT and (strategy.cluster is None or strategy.cluster.kept is None):
-        return {"settled": False}  # nothing kept aside, nothing to keep: no read of the API that could fail the run
+    the estimates are kept aside for the runs of a KEPT phase, as Kaptain's are (Cluster.keep),
+    and a run that asks for a prior gets it for the pairs never run (Cluster.prime)."""
+    cluster = strategy.cluster
+    if phase not in KEPT and not prior and (cluster is None or (cluster.kept is None and not cluster.estimates.prior)):
+        return {"settled": False}  # nothing kept aside or given, nothing to keep: no read of the API that could fail the run
     if strategy.cluster is None:  # no decision yet: what is kept is then empty
         strategy.cluster = Cluster()
     strategy.cluster.refresh()
-    return {"settled": False, "estimates_kept": strategy.cluster.keep(phase)}
+    result = {"settled": False, "estimates_kept": strategy.cluster.keep(phase)}
+    if phase:  # before a run; after it, the prior stays as the run had it
+        given = strategy.cluster.prime(prior, sheets)  # without a prior, takes away the last run's
+        if prior:
+            result["prior"] = given
+    return result
 
 
 class ShortestEstimate(SchedulingStrategy):
@@ -441,8 +527,8 @@ class ShortestEstimate(SchedulingStrategy):
         # A node where the task never ran is tried first, otherwise a copied estimate is never checked.
         return {name: -math.exp(e[0]) if e and e[2] else 0.0 for name, e in known.items()}
 
-    def settle(self, phase):
-        return settle_estimates(self, phase)
+    def settle(self, phase, prior="", sheets=None):
+        return settle_estimates(self, phase, prior, sheets)
 
 
 class EarliestFinish(SchedulingStrategy):
@@ -462,8 +548,8 @@ class EarliestFinish(SchedulingStrategy):
             finish = finish_scores(self.cluster, task, snapshot["nodes"], now)
         return {n["name"]: score for n, score in zip(snapshot["nodes"], finish)}
 
-    def settle(self, phase):
-        return settle_estimates(self, phase)
+    def settle(self, phase, prior="", sheets=None):
+        return settle_estimates(self, phase, prior, sheets)
 
 
 class SlowedEstimate(SchedulingStrategy):
@@ -526,6 +612,50 @@ def finish_scores(cluster, task, nodes, now):
     return scores
 
 
+def chat(key, model, system, text):
+    """One question to the LLM, its JSON answer."""
+    body = {"model": model, "response_format": {"type": "json_object"},
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": text}]}
+    request = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=json.dumps(body).encode(),
+                                     headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    with urllib.request.urlopen(request, timeout=60) as answer:
+        return json.loads(json.load(answer)["choices"][0]["message"]["content"])
+
+
+def runtimes_question(node, tasks, measured, sheets):
+    """What the LLM reads to give a node its prior: the data sheets, the tasks, what was measured.
+    The nodes under other names, node-1, node-2, ...: theirs may tell the hardware."""
+    alias = {name: f"node-{i}" for i, name in enumerate(sorted(set(sheets) | {on for _, on in measured}), 1)}
+    lines = ["Machines:"] + [f"- {alias[name]}: {sheet}" for name, sheet in sorted(sheets.items())]
+    lines += ["", "Tasks:"] + [f"- {task}: {TASKS.get(task, 'a batch task')}" for task in sorted({t for t, _ in measured})]
+    lines += ["", "Mean runtime measured (s):"]
+    lines += [f"- {task} on {alias[on]}: {seconds:.0f}" for (task, on), seconds in sorted(measured.items())]
+    lines += ["", f"Machine to estimate: {alias[node]}. Tasks asked: {', '.join(tasks)}."]
+    return "\n".join(lines)
+
+
+def ask_runtimes(node, tasks, measured, sheets, tries=3):
+    """The LLM's runtime of each task on a node where it never ran, in seconds, 1 s to 1 h. A
+    missing key, a call that fails or an answer that is no number raises after the last try."""
+    key = os.environ["OPENAI_API_KEY"]  # missing: the run does not start
+    question = runtimes_question(node, tasks, measured, sheets)
+    for left in range(tries - 1, -1, -1):
+        try:
+            answer = chat(key, PRIOR_MODEL, PRIOR_PROMPT, question)
+            seconds = {task: min(max(float(answer[task]), 1.0), 3600.0) for task in tasks}
+            if not all(math.isfinite(s) for s in seconds.values()):
+                raise ValueError(f"not a runtime: {answer}")
+            # The whole exchange, to read again what the LLM was told and what it said.
+            log.info(json.dumps({"event": "kaptain_prior_asked", "node": node, "model": PRIOR_MODEL,
+                                 "question": question, "answer": answer}))
+            return seconds
+        except Exception as error:
+            log.warning(json.dumps({"event": "kaptain_prior_failed", "node": node, "error": repr(error)}))
+            if not left:
+                raise
+            time.sleep(2)
+
+
 class LLM:
     """Scores cluster states in the background. Phi = (score - 100) / 10, from -10 to 0."""
 
@@ -538,14 +668,7 @@ class LLM:
         return self.pool.submit(self.ask, text)
 
     def ask(self, text):
-        body = {"model": self.model, "response_format": {"type": "json_object"},
-                "messages": [{"role": "system", "content": PROMPT}, {"role": "user", "content": text}]}
-        request = urllib.request.Request("https://api.openai.com/v1/chat/completions", data=json.dumps(body).encode(),
-                                         headers={"Authorization": f"Bearer {self.key}",
-                                                  "Content-Type": "application/json"})
-        with urllib.request.urlopen(request, timeout=60) as answer:
-            content = json.load(answer)["choices"][0]["message"]["content"]
-        score = min(max(float(json.loads(content)["score"]), 0.0), 100.0)
+        score = min(max(float(chat(self.key, self.model, PROMPT, text)["score"]), 0.0), 100.0)
         log.info(json.dumps({"event": "kaptain_llm", "score": score}))
         return (score - 100) / 10
 
@@ -723,12 +846,13 @@ class Kaptain(SchedulingStrategy):
                                                    zip(snapshot["nodes"], probabilities.tolist())}}))
         return {n["name"]: 1.0 if n["name"] == chosen else 0.0 for n in snapshot["nodes"]}
 
-    def settle(self, phase):
+    def settle(self, phase, prior="", sheets=None):
         """Between two runs (kexp), never on a decision: learns from the training run that ended
         and waits for it, so the next run uses one model throughout. A valid or cold run starts
-        from the training's runtime estimates and leaves them as they were (Cluster.keep)."""
+        from the training's runtime estimates and leaves them as they were (Cluster.keep); a run
+        that asks for a prior gets it for the pairs never run (Cluster.prime)."""
         if self.cluster is None:
-            if phase not in KEPT:
+            if phase not in KEPT and not prior:
                 return {"settled": True, "episodes": self.episodes}
             with self.lock:  # no decision yet: what is kept is then empty, and stays so run after run
                 self.cluster = Cluster(cpu=self.beta > 0)
@@ -741,7 +865,12 @@ class Kaptain(SchedulingStrategy):
             update.result()  # raises what the update raised
         if self.failure:  # also one that ran without settle: no run goes on from a model not learned
             raise RuntimeError(f"an update failed: {self.failure}")
-        return {"settled": True, "episodes": self.episodes, "estimates_kept": self.cluster.keep(phase)}
+        result = {"settled": True, "episodes": self.episodes, "estimates_kept": self.cluster.keep(phase)}
+        if phase:  # before a run; after it, the prior stays as the run had it
+            given = self.cluster.prime(prior, sheets)  # without a prior, takes away the last run's
+            if prior:
+                result["prior"] = given
+        return result
 
     def close(self, now):
         """Ends the training run: its last pod has finished. Learns from it in the background,
