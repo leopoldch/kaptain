@@ -28,11 +28,13 @@ runs are cold (`KEXP_PHASE=cold`): Kaptain is frozen, and each run starts from t
 estimates the training left, for Kaptain as for shortest-estimate and earliest-finish, so no run
 knows a new node from the run before. ktable then gives one table per set of nodes.
 `priors` (`PRIORS`, with `eval_nodes`) does each cold run once per prior, same deployment and
-seed: `none`, or the runtime a task starts from on a node where it never ran, counted as one run
-(`KEXP_PRIOR`): `copy` of the node where the task ran most, `llm`, what an LLM expects from the
+seed: `none`, or the runtime a task starts from on a node where it never ran, as uncertain as
+the estimate it replaces (`KEXP_PRIOR`): `copy` of the node where the task ran most, `llm`, what an LLM expects from the
 nodes' data sheets and the runtimes measured on the other nodes, `llm-placebo`, the same LLM
 and question without the data sheets, or `placebo`, drawn between the task's shortest and longest runtime. ktable gives each its row
-(`earliest-finish + llm prior`), and `meta.json` the seconds given (`settled.prior`). No one
+(`earliest-finish + llm prior`), and `meta.json` the seconds given (`settled.prior`); the LLM
+reads the nodes as `node-1`, `node-2`, ..., and `decider.jsonl` keeps its question and answer
+(`kaptain_prior_asked`). No one
 writes a data sheet: `kexp.py sheets` runs a busybox pod on each node, which prints what the node
 says of itself in `/proc` and `/sys` (CPU, cores online, frequency, memory, disks), after what
 Kubernetes knows (architecture, system, capacity); the campaign keeps them in `node-sheets.json`

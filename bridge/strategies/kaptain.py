@@ -43,16 +43,18 @@
 #    weighs on its node until it stopped, and its own delay counts until the end of the run.
 # 6. A prior for the pairs never run (settle's prior, for the two rules too). Without one, a task
 #    never run on a node borrows the estimate of the node where it ran most, and the rules send
-#    it there first. With one, the pair gets a runtime before any pod ran there, counted as one
-#    run: copy, the same borrowed estimate; llm, what an LLM expects from the data sheets of the
+#    it there first. With one, the pair gets a runtime before any pod ran there, marked as run
+#    once and as uncertain as the borrowed estimate it replaces: copy, the same borrowed estimate; llm, what an LLM expects from the data sheets of the
 #    nodes (read on each node by kexp, no one writes them) and the runtimes measured on the
 #    others, never one of that node; llm-placebo, the same LLM and question without any data
 #    sheet, so what the sheets bring shows against it; placebo, a runtime drawn between the
 #    task's shortest and longest, which says nothing about the node. Asked between two runs,
 #    never on a decision.
-#    The pods that then run there correct it as they correct any estimate. Two things change
-#    with a prior: the rules no longer try the node first, and the runtime it is given. copy
-#    against none measures the first, llm against copy, llm-placebo and placebo the second.
+#    The pods that then run there correct it as fast as they correct a borrowed estimate. Two
+#    things change with a prior: the rules no longer try the node first, and the runtime it is
+#    given. copy against none measures the first alone, same runtime and same uncertainty; llm
+#    against copy, llm-placebo and placebo the second. The LLM reads the nodes as node-1,
+#    node-2, ...: a name such as alex-jetson would tell it the hardware without any sheet.
 # This is a new variant: Kaptain trained with one-step A2C, discounted per decision, until
 # f53745f. Estimates and weights live in the decider's memory: a redeployment starts from
 # scratch. Every update logs the weights (kaptain_checkpoint), and kexp collects them.
@@ -348,8 +350,8 @@ class Cluster:
 
     def prime(self, prior, sheets=None):
         """Before a run, after keep: the runtime each pair never run starts from, on every node
-        of the run (sheets: each one's data sheet, as kexp read it on the node), as one run of
-        that length (PRIORS); none without a prior. Returns the seconds given, per node and
+        of the run (sheets: each one's data sheet, as kexp read it on the node), marked as run
+        once, with the variance of the borrowed estimate it replaces (PRIORS); none without a prior. Returns the seconds given, per node and
         task. The LLM is asked here, between two runs, once per node; an answer that fails
         raises, so the run does not start with another prior."""
         sheets = sheets or {}
@@ -362,8 +364,9 @@ class Cluster:
         with self.lock:
             self.estimates.prior = {}
             measured = {pair: math.exp(e[0]) for pair, e in self.estimates.known.items()}
-            copied = {(task, node): self.estimates.seconds(task, node)
-                      for task in {t for t, _ in measured} for node in sheets}
+            # What each pair has without a prior: the runtime copy gives, the variance every prior gets.
+            borrowed = {(task, node): self.estimates.get(task, node)
+                        for task in {t for t, _ in measured} for node in sheets}
         tasks = sorted({task for task, _ in measured})
         if prior and not tasks:  # a run named after a prior it did not get would be no result
             raise ValueError(f"{prior} prior: no runtime measured yet, nothing to start from")
@@ -381,9 +384,9 @@ class Cluster:
                 given[node] = {task: math.exp(self.draws.uniform(math.log(max(min(s), 1.0)), math.log(max(max(s), 1.0))))
                                for task, s in spans.items()}
             else:
-                given[node] = {task: copied[(task, node)] for task in missing}
+                given[node] = {task: math.exp(borrowed[(task, node)][0]) for task in missing}
         with self.lock:
-            self.estimates.prior = {(task, node): [math.log(max(seconds, 1.0)), SIGMA2, 1]
+            self.estimates.prior = {(task, node): [math.log(max(seconds, 1.0)), borrowed[(task, node)][1], 1]
                                     for node, tasks_s in given.items() for task, seconds in tasks_s.items()}
         given = {node: {task: round(seconds, 1) for task, seconds in tasks_s.items()} for node, tasks_s in given.items()}
         log.info(json.dumps({"event": "kaptain_prior", "prior": prior or None, "seconds": given,
@@ -620,12 +623,14 @@ def chat(key, model, system, text):
 
 
 def runtimes_question(node, tasks, measured, sheets):
-    """What the LLM reads to give a node its prior: the data sheets, the tasks, what was measured."""
-    lines = ["Machines:"] + [f"- {name}: {sheet}" for name, sheet in sorted(sheets.items())]
+    """What the LLM reads to give a node its prior: the data sheets, the tasks, what was measured.
+    The nodes under other names, node-1, node-2, ...: theirs may tell the hardware."""
+    alias = {name: f"node-{i}" for i, name in enumerate(sorted(set(sheets) | {on for _, on in measured}), 1)}
+    lines = ["Machines:"] + [f"- {alias[name]}: {sheet}" for name, sheet in sorted(sheets.items())]
     lines += ["", "Tasks:"] + [f"- {task}: {TASKS.get(task, 'a batch task')}" for task in sorted({t for t, _ in measured})]
     lines += ["", "Mean runtime measured (s):"]
-    lines += [f"- {task} on {on}: {seconds:.0f}" for (task, on), seconds in sorted(measured.items())]
-    lines += ["", f"Machine to estimate: {node}. Tasks asked: {', '.join(tasks)}."]
+    lines += [f"- {task} on {alias[on]}: {seconds:.0f}" for (task, on), seconds in sorted(measured.items())]
+    lines += ["", f"Machine to estimate: {alias[node]}. Tasks asked: {', '.join(tasks)}."]
     return "\n".join(lines)
 
 
@@ -640,6 +645,9 @@ def ask_runtimes(node, tasks, measured, sheets, tries=3):
             seconds = {task: min(max(float(answer[task]), 1.0), 3600.0) for task in tasks}
             if not all(math.isfinite(s) for s in seconds.values()):
                 raise ValueError(f"not a runtime: {answer}")
+            # The whole exchange, to read again what the LLM was told and what it said.
+            log.info(json.dumps({"event": "kaptain_prior_asked", "node": node, "model": PRIOR_MODEL,
+                                 "question": question, "answer": answer}))
             return seconds
         except Exception as error:
             log.warning(json.dumps({"event": "kaptain_prior_failed", "node": node, "error": repr(error)}))
