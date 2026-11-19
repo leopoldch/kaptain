@@ -8,12 +8,17 @@ case "$strategy" in
   *) [[ $strategy =~ ^kaptain(-b[0-9]+(\.[0-9]+)?)?(-pod(-alone)?|(-l[0-9]+(\.[0-9]+)?(-llm|-placebo)?)?)(-ef)?$ ]] ||
        { echo 'Usage: bash deploy-policy.sh POLICY' >&2; exit 2; } ;;
 esac
+llm_key=OPENAI_API_KEY  # of the -llm strategies; of the llm prior, ANT_API_KEY when its model is Anthropic's
+if [[ -n ${KAPTAIN_LLM_PRIOR:-} && ${PRIOR_MODEL:-} == claude-* ]]; then
+  llm_key=ANT_API_KEY
+fi
 if [[ $strategy != *-llm && $strategy != *-llm-ef && -z ${KAPTAIN_LLM_PRIOR:-} ]]; then
-  unset OPENAI_API_KEY  # only the -llm strategies get the key, and any policy of a campaign with the llm prior
-elif [[ -z ${OPENAI_API_KEY:-} ]]; then
-  echo "$strategy needs OPENAI_API_KEY (the repository secret, in GitHub Actions)." >&2
+  unset OPENAI_API_KEY ANT_API_KEY  # only the -llm strategies get a key, and any policy of a campaign with the llm prior
+elif [[ -z ${!llm_key:-} ]]; then
+  echo "$strategy needs $llm_key (the repository secret, in GitHub Actions)." >&2
   exit 2
 fi
+[[ $llm_key == ANT_API_KEY ]] || unset ANT_API_KEY
 
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 commit=$(git rev-parse HEAD)
@@ -136,22 +141,21 @@ stop_scheduler
 ki apply -f - < k8s/decider-rbac.yaml
 k patch deployment kaptain-decider --type merge \
   -p '{"spec":{"template":{"spec":{"serviceAccountName":"kaptain-decider","automountServiceAccountToken":true}}}}'
-if [[ -n ${OPENAI_API_KEY:-} ]]; then
-  # Through stdin, never on a command line. Only the -llm strategies read it.
-  printf %s "$OPENAI_API_KEY" |
-    ki create secret generic kaptain-openai --from-file=OPENAI_API_KEY=/dev/stdin --dry-run=client -o yaml |
+# The decider keeps no key of a previous deployment, then gets those of this one.
+k set env deployment/kaptain-decider OPENAI_API_KEY- ANT_API_KEY-
+for name in OPENAI_API_KEY ANT_API_KEY; do
+  [[ -n ${!name:-} ]] || continue
+  secret=kaptain-$(tr 'A-Z_' 'a-z-' <<< "${name%_API_KEY}")
+  # Through stdin, never on a command line.
+  printf %s "${!name}" |
+    ki create secret generic "$secret" --from-file="$name=/dev/stdin" --dry-run=client -o yaml |
     ki apply -f -
-  k set env deployment/kaptain-decider --from=secret/kaptain-openai
-else
-  # A previous -llm deployment left the key on the decider.
-  if [[ -n $(k get deployment kaptain-decider \
-      -o 'jsonpath={.spec.template.spec.containers[?(@.name=="decider")].env[?(@.name=="OPENAI_API_KEY")].name}') ]]; then
-    k set env deployment/kaptain-decider OPENAI_API_KEY-
-  fi
-fi
+  k set env deployment/kaptain-decider --from="secret/$secret"
+done
 k set image deployment/kaptain-decider decider="$image"
 # KAPTAIN_SEED: one independent training of a learning policy per value; the others ignore it.
-k set env deployment/kaptain-decider STRATEGY="$strategy" KAPTAIN_SEED="${KAPTAIN_SEED:-7}"
+k set env deployment/kaptain-decider STRATEGY="$strategy" KAPTAIN_SEED="${KAPTAIN_SEED:-7}" \
+  PRIOR_MODEL="${PRIOR_MODEL:-}"
 ready kaptain-decider
 k set env deployment/kaptain-scheduler \
   KAPTAIN_STRATEGY="$strategy" POLICY_VERSION="$commit" RUN_ID="$run_id"
