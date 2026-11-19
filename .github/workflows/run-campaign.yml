@@ -69,6 +69,11 @@ on:
         required: false
         default: none
         type: string
+      prior_model:
+        description: The LLM of the llm and llm-placebo priors; an OpenAI model, or an Anthropic one when its name starts with claude- (empty for gpt-6.1-terra)
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -103,7 +108,9 @@ jobs:
           KEXP_NODES: ${{ inputs.nodes }}  # every kexp call of this step: the runs and their cleanup
           EVAL_NODES: ${{ inputs.eval_nodes }}  # the evaluation on each of these sets instead of KEXP_NODES
           PRIORS: ${{ inputs.priors }}  # of the cold runs
+          PRIOR_MODEL: ${{ inputs.prior_model }}  # of the llm priors
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # only the -llm policies and the llm prior use it
+          ANT_API_KEY: ${{ secrets.ANT_API_KEY }}  # only the llm prior with an Anthropic model
           RUN: ${{ github.run_id }}-${{ github.run_attempt }}
         run: bash workloads/campaign.sh
 

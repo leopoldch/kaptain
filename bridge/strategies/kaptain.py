@@ -118,7 +118,9 @@ PROMPT = """You judge a Kubernetes cluster that runs batch tasks. From its state
 when tasks pile up on slow or busy nodes. Answer with JSON only: {"score": <number>}."""
 PRIORS = ("copy", "llm", "llm-placebo", "placebo")  # what a pair never run starts from, when a run asks for one
 # The prior's own model, larger than the Phi bonus's: asked once per node between two runs, its time does not count.
-PRIOR_MODEL = os.environ.get("OPENAI_PRIOR_MODEL", "gpt-6.1-terra")
+# The LLM of the priors: an OpenAI model (OPENAI_API_KEY), or Anthropic's when its name starts
+# with claude- (ANT_API_KEY).
+PRIOR_MODEL = os.environ.get("PRIOR_MODEL") or "gpt-6.1-terra"
 BLIND = "no data sheet"  # llm-placebo: what the LLM reads of every node
 # The tasks as the LLM reads them: the commands of workloads/pods/.
 TASKS = {"cpu": "stress-ng --cpu 1 --cpu-ops 6000: a fixed count of CPU operations, one worker",
@@ -622,6 +624,20 @@ def chat(key, model, system, text):
         return json.loads(json.load(answer)["choices"][0]["message"]["content"])
 
 
+def claude(key, model, system, text, tasks):
+    """The same question to an Anthropic model: one number per task, the format its API enforces.
+    No fallback to another model: a refusal raises, the answer is this model's or none."""
+    import anthropic  # only the deployments that ask it need the package loaded
+    numbers = {"type": "object", "properties": {task: {"type": "number"} for task in tasks},
+               "required": list(tasks), "additionalProperties": False}
+    answer = anthropic.Anthropic(api_key=key, timeout=90.0, max_retries=0).messages.create(
+        model=model, max_tokens=16000, system=system, messages=[{"role": "user", "content": text}],
+        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": numbers}})
+    if answer.stop_reason != "end_turn":
+        raise ValueError(f"no answer: {answer.stop_reason}")
+    return json.loads(next(block.text for block in answer.content if block.type == "text"))
+
+
 def runtimes_question(node, tasks, measured, sheets):
     """What the LLM reads to give a node its prior: the data sheets, the tasks, what was measured.
     The nodes under other names, node-1, node-2, ...: theirs may tell the hardware."""
@@ -637,11 +653,15 @@ def runtimes_question(node, tasks, measured, sheets):
 def ask_runtimes(node, tasks, measured, sheets, tries=3):
     """The LLM's runtime of each task on a node where it never ran, in seconds, 1 s to 1 h. A
     missing key, a call that fails or an answer that is no number raises after the last try."""
-    key = os.environ["OPENAI_API_KEY"]  # missing: the run does not start
+    anthropic = PRIOR_MODEL.startswith("claude-")
+    key = os.environ["ANT_API_KEY" if anthropic else "OPENAI_API_KEY"]  # missing: the run does not start
     question = runtimes_question(node, tasks, measured, sheets)
     for left in range(tries - 1, -1, -1):
         try:
-            answer = chat(key, PRIOR_MODEL, PRIOR_PROMPT, question)
+            if anthropic:
+                answer = claude(key, PRIOR_MODEL, PRIOR_PROMPT, question, tasks)
+            else:
+                answer = chat(key, PRIOR_MODEL, PRIOR_PROMPT, question)
             seconds = {task: min(max(float(answer[task]), 1.0), 3600.0) for task in tasks}
             if not all(math.isfinite(s) for s in seconds.values()):
                 raise ValueError(f"not a runtime: {answer}")

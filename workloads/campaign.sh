@@ -19,8 +19,11 @@ read -ra priors <<< "${PRIORS:-none}"
 for prior in "${priors[@]}"; do
   [[ $prior =~ ^(none|copy|llm|llm-placebo|placebo)$ ]] || { echo "bad prior: $prior"; exit 1; }
   if [[ $prior == llm* ]]; then
-    [[ -n ${OPENAI_API_KEY:-} ]] || { echo "priors: $prior needs OPENAI_API_KEY"; exit 1; }
-    export KAPTAIN_LLM_PRIOR=1  # deploy-policy.sh then leaves the key to every policy
+    # PRIOR_MODEL: the LLM asked, an OpenAI model unless its name starts with claude- (kaptain.py).
+    llm_key=OPENAI_API_KEY
+    [[ ${PRIOR_MODEL:-} == claude-* ]] && llm_key=ANT_API_KEY
+    [[ -n ${!llm_key:-} ]] || { echo "priors: $prior needs $llm_key"; exit 1; }
+    export KAPTAIN_LLM_PRIOR=1 PRIOR_MODEL=${PRIOR_MODEL:-}  # deploy-policy.sh then leaves the key to every policy
   fi
   [[ $prior == llm ]] && read_sheets=1
 done

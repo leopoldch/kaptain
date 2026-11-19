@@ -34,7 +34,8 @@ nodes' data sheets and the runtimes measured on the other nodes, `llm-placebo`, 
 and question without the data sheets, or `placebo`, drawn between the task's shortest and longest runtime. ktable gives each its row
 (`earliest-finish + llm prior`), and `meta.json` the seconds given (`settled.prior`); the LLM
 reads the nodes as `node-1`, `node-2`, ..., and `decider.jsonl` keeps its question and answer
-(`kaptain_prior_asked`). No one
+(`kaptain_prior_asked`). `prior_model` (`PRIOR_MODEL`) names the LLM: an OpenAI model, `gpt-6.1-terra` when empty, or an
+Anthropic one when its name starts with `claude-` (the `ANT_API_KEY` secret). No one
 writes a data sheet: `kexp.py sheets` runs a busybox pod on each node, which prints what the node
 says of itself in `/proc` and `/sys` (CPU, cores online, frequency, memory, disks), after what
 Kubernetes knows (architecture, system, capacity); the campaign keeps them in `node-sheets.json`
