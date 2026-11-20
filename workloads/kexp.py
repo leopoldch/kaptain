@@ -3,6 +3,7 @@ import argparse
 import bisect
 import copy
 import csv
+import hashlib
 import json
 import os
 import random
@@ -906,6 +907,8 @@ def print_manifests(name):
 def run_and_report(name, out_root):
     run_id = os.environ.get("KEXP_RUN_ID") or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     namespace = f"kexp-{run_id}"
+    if len(namespace) > 63:  # Kubernetes' limit: the start kept, the end replaced by a hash of the whole
+        namespace = f"{namespace[:54]}-{hashlib.sha256(run_id.encode()).hexdigest()[:8]}"
     owner = uuid.uuid4().hex
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # a cancelled job still cleans up
     stop = threading.Event()
