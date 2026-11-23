@@ -120,13 +120,15 @@ vagrant destroy -f                                           # delete everything
 ### What to expect
 
 Vagrant reproduces the direction of our results, not our numbers: the VMs share one machine's
-CPU and disk. The reference is our 4-worker cluster, which `vagrant.yaml` imitates, not the edge
-cluster. Three steps, each one a `campaign` block in `vagrant.yaml`:
+CPU and disk. The reference is our 4-worker cluster, not the edge cluster. `vagrant.yaml`
+imitates it with a smaller fast node: 4 vCPUs, as many as the Pi, where ours has 8. So
+least-allocated sends a larger share of the pods to the Pi, and the gap may be wider than ours.
+Three steps, each one a `campaign` block in `vagrant.yaml`:
 
 | Step | Runs | Expect |
 |---|---|---|
 | 1. Calibration: each task alone on each node | 4, about 4 h | `worker-pi` 6 to 9 times slower than `worker-fast` on the CPU task; if not, change its `cpu_cap` |
-| 2. The rules alone (the default) | about 60, half a day | earliest-finish and shortest-estimate clearly below least-allocated; on our cluster, 28 to 29 s against 40 s at one pod every 5 s |
+| 2. The rules alone (the default) | about 60, half a day | at one pod every 5 s, earliest-finish and shortest-estimate at least 20% below least-allocated; on our cluster, 28 to 29 s against 40 s |
 | 3. Kaptain (commented out in `vagrant.yaml`) | about 130, a day | Kaptain level with the best rule |
 
 The calibration:
@@ -145,7 +147,9 @@ Each run's `report.md` gives the completion time per task on its node.
 
 - **Nodes:** their number, cores and speed are in `vagrant.yaml`. `cpu_cap` slows a node down;
   after changing it, `vagrant reload <node>`.
-- **The Pi** is only imitated with a CPU cap: it is not slow on disk, as the real one is.
+- **The Pi** is only imitated with a CPU cap: about as slow on the memory task as on the CPU
+  task, and not slow on disk. The real one is 7 to 9 times slower on the CPU task, under 2 times
+  on the memory task, and 61 to 114 times on disk.
 - **The host:** the VMs ask for 12 vCPUs. With fewer cores, they slow each other down;
   `environment.txt` records what the host had.
 - **Code:** the VMs run the last commit, not your uncommitted changes.
