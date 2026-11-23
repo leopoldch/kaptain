@@ -83,6 +83,7 @@ fi
 {
   echo "commit: $(git rev-parse HEAD)"
   echo "started: $campaign"
+  echo "host: ${HOST:-unknown}"
   echo "architecture: $(uname -m)"
   echo "kernel: $(uname -r)"
   k3s --version | head -n 1

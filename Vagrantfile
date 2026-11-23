@@ -71,6 +71,7 @@ Vagrant.configure("2") do |config|
       "SEEDS" => campaign["seeds"].to_s, "TRAIN_RUNS" => campaign["train_runs"].to_s,
       "REPLICATES" => campaign["replicates"].to_s, "VALIDATE_EVERY" => campaign["validate_every"].to_s,
       "TRAIN_ON" => campaign["train_on"].to_s,
+      "HOST" => "#{Etc.nprocessors} CPUs for #{vcpus} vCPUs, #{RbConfig::CONFIG["host_os"]} #{RbConfig::CONFIG["host_cpu"]}",
     }
   end
 end
