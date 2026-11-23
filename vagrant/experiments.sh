@@ -107,6 +107,7 @@ systemd-run --unit=kaptain-campaign --collect --working-directory=/opt/kaptain \
   --setenv=KEXP_KUBECTL="$KEXP_KUBECTL" --setenv=KAPTAIN_CTR="$KAPTAIN_CTR" --setenv=KAPTAIN_MASTER="$KAPTAIN_MASTER" \
   --setenv=EXPERIMENTS="$EXPERIMENTS" --setenv=STRATEGIES="$others" --setenv=SEEDS="$SEEDS" \
   --setenv=TRAIN_RUNS="$TRAIN_RUNS" --setenv=REPLICATES="$REPLICATES" --setenv=VALIDATE_EVERY="$VALIDATE_EVERY" \
+  --setenv=TRAIN_ON="${TRAIN_ON:-}" \
   --setenv=RUN="$campaign" --setenv=OUT="$out/campaign" --setenv=PLOTS=1 --setenv=HOME=/root \
   bash workloads/campaign.sh
 

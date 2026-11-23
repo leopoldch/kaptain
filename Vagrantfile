@@ -70,6 +70,7 @@ Vagrant.configure("2") do |config|
       "MASTER_NAME" => MASTER["name"], "EXPERIMENTS" => campaign["experiments"], "STRATEGIES" => campaign["strategies"],
       "SEEDS" => campaign["seeds"].to_s, "TRAIN_RUNS" => campaign["train_runs"].to_s,
       "REPLICATES" => campaign["replicates"].to_s, "VALIDATE_EVERY" => campaign["validate_every"].to_s,
+      "TRAIN_ON" => campaign["train_on"].to_s,
     }
   end
 end
