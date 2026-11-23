@@ -77,7 +77,7 @@ The first five rows come from campaign 40903982901, the last three from 41251873
 
 Vagrant builds a cluster of VMs on your machine and runs a whole campaign by itself. You need
 [VirtualBox](https://www.virtualbox.org/) 7.1+ and
-[Vagrant](https://developer.hashicorp.com/vagrant/install) 2.4.9+, about 12 GB of free RAM,
+[Vagrant](https://developer.hashicorp.com/vagrant/install) 2.4.9+, about 13 GB of free RAM,
 25 GB of disk, and Internet.
 
 ```bash
@@ -97,7 +97,7 @@ prepaid credits. The key is kept in a Kubernetes secret inside the VMs, not in `
 it with a short smoke test, then starts the campaign in the background. The results land in
 `results/<date>/campaign/`: one folder per run, `summary.md` with the tables, and `plots/`.
 
-**First try:** the default campaign takes a day or more. For a run of under an hour, set this
+**First try:** the default campaign takes about half a day. For a run of under an hour, set this
 in `vagrant.yaml` before `vagrant up`:
 
 ```yaml
@@ -117,11 +117,38 @@ vagrant provision master --provision-with setup,experiments  # again, on a new c
 vagrant destroy -f                                           # delete everything
 ```
 
-- **Nodes:** their number, cores and speed are in `vagrant.yaml`. `cpu_cap` slows a node down.
+### What to expect
+
+Vagrant reproduces the direction of our results, not our numbers: the VMs share one machine's
+CPU and disk. The reference is our 4-worker cluster, which `vagrant.yaml` imitates, not the edge
+cluster. Three steps, each one a `campaign` block in `vagrant.yaml`:
+
+| Step | Runs | Expect |
+|---|---|---|
+| 1. Calibration: each task alone on each node | 4, about 4 h | `worker-pi` 6 to 9 times slower than `worker-fast` on the CPU task; if not, change its `cpu_cap` |
+| 2. The rules alone (the default) | about 60, half a day | earliest-finish and shortest-estimate clearly below least-allocated; on our cluster, 28 to 29 s against 40 s at one pod every 5 s |
+| 3. Kaptain (commented out in `vagrant.yaml`) | about 130, a day | Kaptain level with the best rule |
+
+The calibration:
+
+```yaml
+campaign:
+  experiments: calibration
+  strategies: pin-worker-fast pin-worker-pi pin-worker-slow-1 pin-worker-slow-2
+  seeds: 7
+  train_runs: 0
+  replicates: 1
+  validate_every: 0
+```
+
+Each run's `report.md` gives the completion time per task on its node.
+
+- **Nodes:** their number, cores and speed are in `vagrant.yaml`. `cpu_cap` slows a node down;
+  after changing it, `vagrant reload <node>`.
+- **The Pi** is only imitated with a CPU cap: it is not slow on disk, as the real one is.
+- **The host:** the VMs ask for 12 vCPUs. With fewer cores, they slow each other down;
+  `environment.txt` records what the host had.
 - **Code:** the VMs run the last commit, not your uncommitted changes.
-- **What it reproduces:** the procedure, not our numbers. The VMs share one machine's CPU and
-  disk, and the Pi is only imitated with a CPU cap: it is not slow on disk, as the real one is.
-  Compare the policies with each other, not with the tables above.
 - **Tested on:** Linux amd64, macOS and Windows.
 - **Windows:** disable Hyper-V (`bcdedit /set hypervisorlaunchtype off` as administrator, then
   restart). Under it, the VMs have no AVX, which `stress-ng` needs. Docker Desktop on WSL2 and
