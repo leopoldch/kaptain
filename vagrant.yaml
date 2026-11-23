@@ -11,11 +11,25 @@ nodes:
   - { name: worker-slow-1, cpus: 1, memory: 1536, cpu_cap: 100, experiment: true }
   - { name: worker-slow-2, cpus: 1, memory: 1536, cpu_cap: 100, experiment: true }
 
-# The default takes about a day or more: shorten it for a first try.
+# The default, about 60 runs, half a day: the rules alone. Do those that estimate runtimes beat
+# least-allocated? train_on: each policy is prepared once, on these experiments in turn, then
+# evaluated on every experiment.
 campaign:
-  experiments: even-5s even-10s
-  strategies: kaptain-pod-alone earliest-finish shortest-estimate least-allocated default-scheduler
+  experiments: even-5s even-2s
+  train_on: even-5s even-2s
+  strategies: earliest-finish shortest-estimate least-allocated default-scheduler
   seeds: 7 8 9 10 11
   train_runs: 10
-  replicates: 3
+  replicates: 1
   validate_every: 0
+
+# Then Kaptain, about 130 runs, a day: two trainings of 40 runs, each frozen every 10 runs on two
+# validation seeds. Its reference is the rules above: same seeds, same nodes.
+# campaign:
+#   experiments: even-5s even-2s
+#   train_on: even-5s even-2s
+#   strategies: kaptain-pod-alone
+#   seeds: 7 8 9 10 11
+#   train_runs: 40
+#   replicates: 2
+#   validate_every: 10
