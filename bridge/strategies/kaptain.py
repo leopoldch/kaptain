@@ -412,21 +412,24 @@ class Cluster:
             self.estimates.known.update(self.estimates.hidden)
             self.estimates.hidden = {}
 
-    def hide(self):
+    def hide(self, nodes=()):
         """Before a training run, after prime: one node drawn at random is met as a node never
         seen with a prior is in a cold run. Its estimates are put aside (show) and each of its
         pairs starts from its runtime with noise (HIDDEN_SIGMA), marked as a prior is (prime).
-        Returns the node and the seconds given; nothing while fewer than two nodes have run every
-        task of the node drawn."""
+        Drawn among the nodes of the run (nodes; every node known when not given) whose tasks
+        all ran on another node too: the variance of a prior is borrowed there. Returns the node
+        and the seconds given; nothing when no node can be hidden."""
         with self.lock:
             known = self.estimates.known
-            nodes = sorted({node for _, node in known})
-            if len(nodes) < 2:
+            ran = collections.defaultdict(set)  # task -> the nodes it ran on
+            for task, node in known:
+                ran[task].add(node)
+            able = sorted(node for node in {n for _, n in known}
+                          if (not nodes or node in nodes) and all(len(on) > 1 for on in ran.values() if node in on))
+            if not able:
                 return {}
-            node = self.hides.choice(nodes)
+            node = self.hides.choice(able)
             pairs = {pair: known[pair] for pair in known if pair[1] == node}
-            if any(not any(t == task and n != node for t, n in known) for task, _ in pairs):
-                return {}  # a task only this node ran: nothing to borrow its variance from
             for pair in pairs:
                 del known[pair]
             self.estimates.hidden = pairs
@@ -936,7 +939,7 @@ class Kaptain(SchedulingStrategy):
             if prior:
                 result["prior"] = given
             if self.hide and phase == "train" and not prior:
-                result["hidden"] = self.cluster.hide()
+                result["hidden"] = self.cluster.hide(set(sheets or ()))  # empty: no node could be hidden
         return result
 
     def close(self, now):

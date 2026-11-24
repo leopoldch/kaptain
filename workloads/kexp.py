@@ -575,7 +575,8 @@ def run(name, run_id, namespace, owner, out_root):
         raise RuntimeError("KEXP_PRIOR: only when Kaptain's plugin places the pods")
     # A prior is given on this run's nodes; the llm one reads their data sheets (kexp.py sheets).
     known_sheets = json.loads(Path(os.environ["KEXP_SHEETS"]).read_text()) if os.environ.get("KEXP_SHEETS") else {}
-    sheets = {node: known_sheets.get(node, "") for node in nodes} if prior else {}
+    # Without a prior, the nodes alone: a -hide policy hides one of them at a training run.
+    sheets = {node: known_sheets.get(node, "") for node in nodes}
     if prior == "llm" and not all(sheets.values()):
         raise RuntimeError("KEXP_PRIOR=llm: KEXP_SHEETS must give a data sheet for every node of the run")
     images = running_images()  # before any output: a run without clear provenance is not started
