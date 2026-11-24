@@ -90,7 +90,7 @@ MOVED_V = 1.0  # extra variance of an estimate taken from another node
 UNKNOWN_S = 60.0  # runtime of a task never run anywhere
 SCALE = 100.0  # task-seconds per unit of reward
 ACCOUNT = "/var/run/secrets/kubernetes.io/serviceaccount"
-VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?(?:(-pod)(-alone)?)?(-ef)?")  # -llm, -placebo only with a lambda: they give the Phi of the bonus
+VARIANT = re.compile(r"kaptain(?:-b(\d+(?:\.\d+)?))?(?:-l(\d+(?:\.\d+)?)(-llm|-placebo)?)?(?:(-pod)(-alone)?)?(-ef)?(-hide)?")  # -llm, -placebo only with a lambda: they give the Phi of the bonus
 TEMPERATURE_S = 20.0  # of the earliest-finish prior (-ef): nodes this many seconds apart in finish time, e times as likely
 FIXED_SLOWDOWN = 1.0  # slowed-estimate-fixed: a node fully booked runs a pod twice as long (learned on campaign 41251873008: 0.6-0.95 on the 1-core workers, 0.3 on the 8-core one)
 SLOWDOWN_GRID = [i / 20 for i in range(61)]  # slowed-estimate-learned: the slowdowns tried, 0 to 3
@@ -103,6 +103,7 @@ FROZEN = ("eval", "valid", "cold")  # phases that only use the policy: the evalu
 # leave them as they were. A cold run is an evaluation on other nodes than the training's: what
 # one run learns of a node never seen must not reach the next.
 KEPT = ("valid", "cold")
+HIDDEN_SIGMA = 0.5  # -hide: noise of the log-runtime a hidden node starts from, a factor 1.6: about the LLM prior's error on our nodes
 HALF_LIFE_S = 240.0  # of the discount: about a disk task on the Pi, which a shorter one would let look cheap
 GAE = 0.95  # generalized advantage estimation, per decision
 EPOCHS = 8  # passes over an episode at each update
@@ -140,10 +141,19 @@ def stamp(text):
     return datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
 
 
+def learned(old, y):
+    """An estimate [mu, v, runs] after one more log-runtime y."""
+    if old is None:
+        return [y, SIGMA2, 1]
+    mu, v, n = old
+    return [(mu * SIGMA2 + y * v) / (v + SIGMA2), v * SIGMA2 / (v + SIGMA2), n + 1]
+
+
 class Estimates:
     def __init__(self):
         self.known = {}  # (task, node) -> [mu, v, runs]
         self.prior = {}  # the same, for pairs never run: set for one run (Cluster.prime), empty otherwise
+        self.hidden = {}  # the same, of a node hidden for one training run (Cluster.hide): they go on learning
 
     def get(self, task, node):
         if (task, node) in self.known:
@@ -158,12 +168,9 @@ class Estimates:
 
     def update(self, task, node, runtime_s):
         y = math.log(max(runtime_s, 1.0))
-        old = self.get(task, node)
-        if old is None:
-            self.known[(task, node)] = [y, SIGMA2, 1]
-            return
-        mu, v, n = old
-        self.known[(task, node)] = [(mu * SIGMA2 + y * v) / (v + SIGMA2), v * SIGMA2 / (v + SIGMA2), n + 1]
+        if (task, node) in self.hidden:
+            self.hidden[(task, node)] = learned(self.hidden[(task, node)], y)
+        self.known[(task, node)] = learned(self.get(task, node), y)
 
     def seconds(self, task, node):
         found = self.get(task, node)
@@ -308,6 +315,7 @@ class Cluster:
         self.ended = collections.deque(maxlen=20000)  # (namespace, pod, finished, succeeded) of every pod that stopped
         self.kept = None  # the training's runtime estimates, while the runs of a KEPT phase use a copy
         self.draws = random.Random(7)  # the placebo prior's runtimes
+        self.hides = random.Random(11)  # -hide: the node hidden and the noise of what it starts from
         self.lock = threading.Lock()
         threading.Thread(target=self.loop, daemon=True).start()
 
@@ -394,6 +402,41 @@ class Cluster:
         log.info(json.dumps({"event": "kaptain_prior", "prior": prior or None, "seconds": given,
                              **({"model": PRIOR_MODEL} if prior.startswith("llm") else {})}))
         return given
+
+    def show(self):
+        """Between two runs: the node hidden for the last one has its estimates back, with what
+        that run measured on it."""
+        with self.lock:
+            for pair in self.estimates.hidden:
+                self.estimates.prior.pop(pair, None)
+            self.estimates.known.update(self.estimates.hidden)
+            self.estimates.hidden = {}
+
+    def hide(self):
+        """Before a training run, after prime: one node drawn at random is met as a node never
+        seen with a prior is in a cold run. Its estimates are put aside (show) and each of its
+        pairs starts from its runtime with noise (HIDDEN_SIGMA), marked as a prior is (prime).
+        Returns the node and the seconds given; nothing while fewer than two nodes have run every
+        task of the node drawn."""
+        with self.lock:
+            known = self.estimates.known
+            nodes = sorted({node for _, node in known})
+            if len(nodes) < 2:
+                return {}
+            node = self.hides.choice(nodes)
+            pairs = {pair: known[pair] for pair in known if pair[1] == node}
+            if any(not any(t == task and n != node for t, n in known) for task, _ in pairs):
+                return {}  # a task only this node ran: nothing to borrow its variance from
+            for pair in pairs:
+                del known[pair]
+            self.estimates.hidden = pairs
+            given = {}
+            for (task, _), (mu, _, _) in sorted(pairs.items()):
+                start = max(mu + self.hides.gauss(0, HIDDEN_SIGMA), 0.0)
+                self.estimates.prior[(task, node)] = [start, self.estimates.get(task, node)[1], 1]
+                given[task] = round(math.exp(start), 1)
+        log.info(json.dumps({"event": "kaptain_hidden", "node": node, "seconds": given}))
+        return {"node": node, "seconds": given}
 
     def get(self, path):
         url = f"https://{os.environ['KUBERNETES_SERVICE_HOST']}:{os.environ['KUBERNETES_SERVICE_PORT']}{path}"
@@ -752,6 +795,7 @@ class Kaptain(SchedulingStrategy):
         if self.pod and self.lam:
             raise ValueError(f"{name}: -pod rewards a decision for its own pod, without -l")
         self.residual = bool(weights[6])  # -ef: the network corrects earliest-finish instead of scoring alone
+        self.hide = bool(weights[7])  # -hide: each training run meets one of its nodes as a node never seen, with a prior
 
         def embedding():
             return nn.Sequential(nn.Linear(14, hidden), nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU())
@@ -877,6 +921,7 @@ class Kaptain(SchedulingStrategy):
             with self.lock:  # no decision yet: what is kept is then empty, and stays so run after run
                 self.cluster = Cluster(cpu=self.beta > 0)
         self.cluster.refresh()
+        self.cluster.show()
         with self.lock:
             if self.episode:
                 self.close(time.time())
@@ -890,6 +935,8 @@ class Kaptain(SchedulingStrategy):
             given = self.cluster.prime(prior, sheets)  # without a prior, takes away the last run's
             if prior:
                 result["prior"] = given
+            if self.hide and phase == "train" and not prior:
+                result["hidden"] = self.cluster.hide()
         return result
 
     def close(self, now):
