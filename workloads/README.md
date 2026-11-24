@@ -40,6 +40,10 @@ writes a data sheet: `kexp.py sheets` runs a busybox pod on each node, which pri
 says of itself in `/proc` and `/sys` (CPU, cores online, frequency, memory, disks), after what
 Kubernetes knows (architecture, system, capacity); the campaign keeps them in `node-sheets.json`
 (`KEXP_SHEETS` for a run).
+A Kaptain policy named `-hide` (`kaptain-pod-alone-hide`) trains for these runs: at each training
+run one of its nodes, drawn at random, is met as a node never seen with a prior. Its estimates
+are put aside for the run and each task starts there from its runtime with noise (a factor 1.6,
+about the LLM's error), marked as a prior is; `meta.json` names the node (`settled.hidden`).
 `KEXP_SEED=8 python3 kexp.py run drs-even` replaces the file's seed by hand, and
 `python3 ktable.py runs/` sums up downloaded runs: per experiment and policy, the mean over
 seeds ± 95% interval, and the change against `--reference` (least-allocated) on the same seeds.
