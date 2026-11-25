@@ -2,16 +2,34 @@
 master: { name: master, cpus: 2, memory: 4096, experiment: false }
 nodes:
   - { name: worker-fast,   cpus: 4, memory: 3072, cpu_cap: 100, experiment: true }
-  # The Raspberry Pi 5: 4 cores, slower ones. The host's architecture here, and less memory than its 8 GB.
-  - { name: worker-pi,     cpus: 4, memory: 2048, cpu_cap: 50,  experiment: true }
-  - { name: worker-slow-1, cpus: 1, memory: 1536, cpu_cap: 50,  experiment: true }
-  - { name: worker-slow-2, cpus: 1, memory: 1536, cpu_cap: 50,  experiment: true }
+  # The Raspberry Pi 5: on the real cluster, 7 to 9 times slower than the VMs on the CPU task, with
+  # as much memory as the largest VM, so least-allocated sees it as just as big.
+  # Set cpu_cap from the calibration (README). A CPU cap does not make it slow on disk, as the
+  # real one is.
+  - { name: worker-pi,     cpus: 4, memory: 3072, cpu_cap: 15,  experiment: true }
+  # The real 1-vCPU VMs are not capped: alone, they are only 8 to 30% slower than a big VM.
+  - { name: worker-slow-1, cpus: 1, memory: 1536, cpu_cap: 100, experiment: true }
+  - { name: worker-slow-2, cpus: 1, memory: 1536, cpu_cap: 100, experiment: true }
 
-# The default takes about a day or more: shorten it for a first try.
+# The default, about 60 runs, half a day: the rules alone. Do those that estimate runtimes beat
+# least-allocated? train_on: each policy is prepared once, on these experiments in turn, then
+# evaluated on every experiment.
 campaign:
-  experiments: even-5s even-10s
-  strategies: kaptain-pod-alone earliest-finish shortest-estimate least-allocated default-scheduler
+  experiments: even-5s even-2s
+  train_on: even-5s even-2s
+  strategies: earliest-finish shortest-estimate least-allocated default-scheduler
   seeds: 7 8 9 10 11
   train_runs: 10
-  replicates: 3
+  replicates: 1
   validate_every: 0
+
+# Then Kaptain, about 130 runs, a day: two trainings of 40 runs, each frozen every 10 runs on two
+# validation seeds. Its reference is the rules above: same seeds, same nodes.
+# campaign:
+#   experiments: even-5s even-2s
+#   train_on: even-5s even-2s
+#   strategies: kaptain-pod-alone
+#   seeds: 7 8 9 10 11
+#   train_runs: 40
+#   replicates: 2
+#   validate_every: 10
